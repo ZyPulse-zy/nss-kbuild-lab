@@ -86,7 +86,9 @@ def prepare_sources(manifest, workspace, evidence, archives):
     for item in manifest["dependencies"]:
         target = workspace / "dependencies" / item["name"]
         extract_archive(archives[item["name"] + ".tar.gz"], target)
-        patches = sorted((source / item["recipe"] / "patches").glob("*.patch"))
+        patches = sorted(
+            (source / item["recipe"] / item.get("patch_directory", "patches")).glob("*.patch")
+        )
         actual = [{"path": patch.name, "sha256": digest(patch)} for patch in patches]
         if actual != item["patches"]:
             raise ValueError("Package patch series changed: " + item["name"])
@@ -201,12 +203,15 @@ def verify_target_configuration(manifest, configuration):
     prefix = "CONFIG_TARGET_" + target["board"] + "_" + target["subtarget"]
     required = (
         "CONFIG_ATH11K_NSS_SUPPORT=y",
-        "CONFIG_NSS_FIRMWARE_VERSION_12_5=y",
+        "CONFIG_NSS_FIRMWARE_VERSION_" + target.get("firmware", "12_5") + "=y",
         'CONFIG_GCC_VERSION="14.3.0"',
         prefix + "=y",
         prefix + "_DEVICE_" + target["device"] + "=y",
     )
     resolved = set(configuration.splitlines())
+    mesh = "CONFIG_ATH11K_NSS_MESH_SUPPORT=y"
+    if (mesh in resolved) != target.get("mesh", False):
+        raise ValueError("Resolved NSS mesh selection differs from the pinned profile")
     for option in required:
         if option not in resolved:
             raise ValueError("Required build option missing: " + option)
@@ -347,7 +352,9 @@ def build_modules(manifest_path, workspace, evidence, jobs):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, required=True)
-    parser.add_argument("--profile", choices=["ipq60xx", "ipq807x"], default="ipq60xx")
+    parser.add_argument(
+        "--profile", choices=["ipq60xx", "ipq807x", "ipq807x-mesh"], default="ipq60xx"
+    )
     parser.add_argument("--jobs", type=int, choices=range(1, 9), default=4)
     parser.add_argument("--archive-cache", type=Path, help="read-only cache with SHA256 filenames")
     parser.add_argument(

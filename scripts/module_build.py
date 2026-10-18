@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import sys
 import platform
+import re
 import shutil
 import signal
 import subprocess
@@ -212,6 +213,36 @@ try:
         if not directory.exists():
             shutil.copytree(args.sources.resolve() / name, directory)
         recipe = source / recipe_path
+        pin = next(item for item in manifest["dependencies"] if item["name"] == name)
+        exported = out / "evaluation" / name
+        exported.mkdir()
+        run(
+            name + "-identity",
+            recipe_command(
+                recipe,
+                directory,
+                "export-variables",
+                ["VARIABLES=PKG_SOURCE_VERSION PATCH_DIR", "EXPORT_DIR=" + str(exported)],
+            ),
+            recipe,
+        )
+        selected_commit = (exported / "PKG_SOURCE_VERSION").read_text().strip()
+        if not re.fullmatch(r"[0-9a-f]{7,40}", selected_commit) or not pin[
+            "source_commit"
+        ].startswith(selected_commit):
+            raise ValueError("Recipe selects a different source commit: " + name)
+        selected_patches = Path((exported / "PATCH_DIR").read_text().strip())
+        if not selected_patches.is_absolute():
+            selected_patches = recipe / selected_patches
+        expected_patches = recipe / pin.get("patch_directory", "patches")
+        if selected_patches.resolve() != expected_patches.resolve():
+            raise ValueError("Recipe selects a different patch directory: " + name)
+        report.setdefault("recipe_identity", {})[name] = {
+            "selected_source_commit": selected_commit,
+            "manifest_source_commit": pin["source_commit"],
+            "selected_patch_directory": str(selected_patches),
+            "verified": True,
+        }
         extras = []
         if name == "qca-nss-clients":
             extras = ["NSS_CLIENTS_MAKE_OPTS=wifi-meshmgr=m"]
@@ -253,13 +284,15 @@ try:
             module_artifact(variant + "/" + str(file.relative_to(directory)), file)
         command = directory / "drivers/net/wireless/ath/ath11k/.nss.o.cmd"
         defines = command.read_text().splitlines()[0]
-        expected = variant == "candidate"
+        expected = variant == "candidate" and manifest["target"].get("firmware", "12_5") == "12_5"
         assert ("-DNSS_FIRMWARE_VERSION_12_5" in defines) == expected
         report.setdefault("actual_nss_define", {})[variant] = expected
     assert kernel_inputs == {p: digest(kernel / p) for p in kernel_inputs}
     from layout_probe import probe_layout
 
-    report["compiled_header_layout"] = probe_layout(out, env, kernel)
+    report["compiled_header_layout"] = probe_layout(
+        out, env, kernel, manifest.get("layout_probe", "retry")
+    )
     report.update(passed=True, kernel_inputs_unchanged=True)
     save()
     print(

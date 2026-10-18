@@ -22,6 +22,13 @@ commit, package patch and each target's separately verified official SDK.
 The lab rejects a resolved Kconfig that silently falls back to another device
 or subtarget, and records the selected options in the kernel proof.
 
+This development branch also prepares `ipq807x-mesh`, requiring NSS 11.4 and
+its different driver/client revisions and patch series. It is a candidate until
+a complete build passes. Each dependency's actual make-exported source revision
+and patch directory must match its manifest before it is compiled. The 11.4
+header predates the separate retry structure, so its layout probe compares the
+common peer row across driver, baseline and candidate instead.
+
 | Input | Pin |
 | --- | --- |
 | qosmio/openwrt-ipq | `92a2d104145c8d265851c4b388a41bd8e9c21cd9` |

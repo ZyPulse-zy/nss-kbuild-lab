@@ -16,7 +16,7 @@ class TargetConfigurationTests(unittest.TestCase):
         self.configuration += 'CONFIG_GCC_VERSION="14.3.0"\n'
 
     def test_both_pinned_public_profiles_select_the_expected_device(self):
-        for profile in ("ipq60xx", "ipq807x"):
+        for profile in ("ipq60xx", "ipq807x", "ipq807x-mesh"):
             manifest = json.loads((ROOT / "pins" / (profile + ".json")).read_text())
             config = (ROOT / manifest["config"]).read_text()
             selected = verify_target_configuration(
@@ -49,6 +49,30 @@ class TargetConfigurationTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "GCC_VERSION"):
             verify_target_configuration(self.manifest, config)
+
+    def test_normal_profile_rejects_unexpected_mesh_selection(self):
+        with self.assertRaisesRegex(ValueError, "mesh selection"):
+            verify_target_configuration(
+                self.manifest, self.configuration + "CONFIG_ATH11K_NSS_MESH_SUPPORT=y\n"
+            )
+
+    def test_mesh_profile_requires_its_legacy_firmware(self):
+        manifest = json.loads((ROOT / "pins/ipq807x-mesh.json").read_text())
+        config = (ROOT / manifest["config"]).read_text() + 'CONFIG_GCC_VERSION="14.3.0"\n'
+        config = config.replace(
+            "CONFIG_NSS_FIRMWARE_VERSION_11_4=y", "CONFIG_NSS_FIRMWARE_VERSION_12_5=y"
+        )
+        with self.assertRaisesRegex(ValueError, "11_4"):
+            verify_target_configuration(manifest, config)
+
+    def test_mesh_profile_rejects_a_disabled_mesh_option(self):
+        manifest = json.loads((ROOT / "pins/ipq807x-mesh.json").read_text())
+        config = (ROOT / manifest["config"]).read_text() + 'CONFIG_GCC_VERSION="14.3.0"\n'
+        config = config.replace(
+            "CONFIG_ATH11K_NSS_MESH_SUPPORT=y", "# CONFIG_ATH11K_NSS_MESH_SUPPORT is not set"
+        )
+        with self.assertRaisesRegex(ValueError, "mesh selection"):
+            verify_target_configuration(manifest, config)
 
 
 if __name__ == "__main__":

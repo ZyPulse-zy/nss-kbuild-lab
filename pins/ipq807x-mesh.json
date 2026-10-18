@@ -1,0 +1,451 @@
+{
+  "schema": 1,
+  "profile": "ipq807x-nss11.4-mesh",
+  "source": {
+    "repository": "qosmio/openwrt-ipq",
+    "commit": "92a2d104145c8d265851c4b388a41bd8e9c21cd9",
+    "url": "https://codeload.github.com/qosmio/openwrt-ipq/tar.gz/92a2d104145c8d265851c4b388a41bd8e9c21cd9",
+    "sha256": "c3ffe5d6636fdb7e501e8623d687096a8fb7ac2c6b23d62bab1888a22b85972c",
+    "git_commit_file": "pins/openwrt-ipq-92a2d104.commit"
+  },
+  "sdk": {
+    "url": "https://downloads.openwrt.org/releases/25.12.0/targets/qualcommax/ipq807x/openwrt-sdk-25.12.0-qualcommax-ipq807x_gcc-14.3.0_musl.Linux-x86_64.tar.zst",
+    "sha256": "41972153983085eb8373b4d88fba1533f3d738bf5721512b56ce9cc8ec303339",
+    "toolchain": "toolchain-aarch64_cortex-a53_gcc-14.3.0_musl",
+    "cross": "aarch64-openwrt-linux-musl-",
+    "absolute_host_links": {
+      "staging_dir/host/bin/ldconfig": "/builder/shared-workdir/build/scripts/noop.sh",
+      "staging_dir/host/bin/egrep": "/bin/egrep",
+      "staging_dir/host/bin/file": "/usr/bin/file",
+      "staging_dir/host/bin/grep": "/bin/grep",
+      "staging_dir/host/bin/gzip": "/bin/gzip",
+      "staging_dir/host/bin/which": "/usr/bin/which",
+      "staging_dir/host/bin/bash": "/bin/bash",
+      "staging_dir/host/bin/awk": "/usr/bin/gawk",
+      "staging_dir/host/bin/getopt": "/usr/bin/getopt",
+      "staging_dir/host/bin/rsync": "/usr/bin/rsync",
+      "staging_dir/host/bin/python3": "/opt/venv/bin/python3.9",
+      "staging_dir/host/bin/diff": "/usr/bin/diff",
+      "staging_dir/host/bin/gcc": "/builder/openwrt-25_12_qualcommax_ipq807x/ccache_cc.sh",
+      "staging_dir/host/bin/wget": "/usr/bin/wget",
+      "staging_dir/host/bin/g++": "/builder/openwrt-25_12_qualcommax_ipq807x/ccache_cxx.sh",
+      "staging_dir/host/bin/perl": "/usr/bin/perl",
+      "staging_dir/host/bin/python": "/opt/venv/bin/python3.9",
+      "staging_dir/host/bin/git": "/usr/bin/git",
+      "staging_dir/host/bin/xxd": "/builder/shared-workdir/build/scripts/xxdi.pl",
+      "staging_dir/host/bin/unzip": "/usr/bin/unzip"
+    }
+  },
+  "kernel": {
+    "version": "6.12.92",
+    "url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.92.tar.xz",
+    "sha256": "0fe376b7db3cac4456b38291bee4faa7091cb8befaa6f9870314f5d1282f9e3e"
+  },
+  "backports": {
+    "version": "6.18.26",
+    "url": "https://github.com/openwrt/backports/releases/download/backports-v6.18.26/backports-6.18.26.tar.zst",
+    "sha256": "2ad578c6cae22f192fefd44e1449725228d4109ee781998b41dcbae872554968"
+  },
+  "source_date_epoch": 1780585690,
+  "config": "profiles/ipq807x-mesh.config",
+  "combined_patch": "patches/ath11k-nss-combined.patch",
+  "combined_patch_sha256": "7ebc11ebea54fcb62aa58a3c03cbd7e8e38aea01555a206f5262a57435614638",
+  "dependencies": [
+    {
+      "name": "qca-ssdk",
+      "repository": "openwrt/qca-ssdk",
+      "source_commit": "446db12b1fd3bca2e61e45cb01c4ad52cfddd95b",
+      "recipe": "package/kernel/qca-ssdk",
+      "url": "https://codeload.github.com/openwrt/qca-ssdk/tar.gz/446db12b1fd3bca2e61e45cb01c4ad52cfddd95b",
+      "archive_sha256": "5ab189681041d170ff1e82764bc0127c15f50bc7f91a4cf6fc29a70fb602d46f",
+      "patches": []
+    },
+    {
+      "name": "qca-nss-dp",
+      "repository": "openwrt/qca-nss-dp",
+      "source_commit": "6a5c4716ca258d67202fc7964c9294dfefa3ccfa",
+      "recipe": "package/kernel/qca-nss-dp",
+      "url": "https://codeload.github.com/openwrt/qca-nss-dp/tar.gz/6a5c4716ca258d67202fc7964c9294dfefa3ccfa",
+      "archive_sha256": "dce3806ef58b255cf0cc05a37edf801e111dd70123e9acd26ddb060c5e0f3d56",
+      "patches": []
+    },
+    {
+      "name": "qca-nss-clients",
+      "repository": "CodeLinaro-mirror/qsdk_oss_lklm_nss-clients",
+      "source_commit": "c4049d17ddda323d4514f053bc2d72e2443f9d23",
+      "recipe": "package/nss-feed/qca-nss-clients",
+      "url": "https://codeload.github.com/CodeLinaro-mirror/qsdk_oss_lklm_nss-clients/tar.gz/c4049d17ddda323d4514f053bc2d72e2443f9d23",
+      "archive_sha256": "056166c9bd55a0ad83ffd016520bb31e0f4b3095954ddab36146eddd209ac7d7",
+      "patches": [
+        {
+          "path": "0001-kernel-5.15-support-qdisc.patch",
+          "sha256": "32515fa476ccd8baa30d024ece211e7fba5b199bfb6ab771e0c530a9f5522d9e"
+        },
+        {
+          "path": "0002-kernel-5.4-support-gre.patch",
+          "sha256": "30431be440aa667bbc6359453b41056656a6e9ddbe887fc3416f394c3f010bf8"
+        },
+        {
+          "path": "0003-kernel-5.4-support-ipsec.patch",
+          "sha256": "2ad769ef57a7ab39aa17a435a9d5fdff691e5f1f91c12ad994045590cefbb314"
+        },
+        {
+          "path": "0004-kernel-5.4-support-dtls.patch",
+          "sha256": "e77434bcebeb81261c45d16b20c84f6c4911e14c1fd60d500dca456e28b7ebea"
+        },
+        {
+          "path": "0005-vlanmgr-fix-compile-error.patch",
+          "sha256": "d112f09bd3d69562d5b3bc4c3e0829e7c0289c6fa1a46f74ae3ecfc22a4f6ea1"
+        },
+        {
+          "path": "0006-match-fix-compile-error.patch",
+          "sha256": "6640277df98777f7f47b1df8f6c708b6632adb618d14a015d72bb2cb8a0dba53"
+        },
+        {
+          "path": "0007-bridge-fix-compile-error.patch",
+          "sha256": "c66e7d74dbced48fedd5e56b57583b6c5888eb7742ad2e37a3a11bace77cd017"
+        },
+        {
+          "path": "0008-profiler-fix-compile-error.patch",
+          "sha256": "ac08ccadcc094bbabb4162f20ebdc9600d2558ef88445a65066683ef8a512798"
+        },
+        {
+          "path": "0009-gre-fix-compile-error.patch",
+          "sha256": "0c853348387a084f27d6704180d7f23e9e4c293247c0d5c7874d9a57948ef5b8"
+        },
+        {
+          "path": "0010-fix-portifmgr.patch",
+          "sha256": "525870faf55e15a759f082f692ce1ca4213b02f174d71765c1f8de0c671740c9"
+        },
+        {
+          "path": "0011-dtlsmgr-fix-SHA-header-include-in-5.15.patch",
+          "sha256": "95aa3ad23febc28d72be7efaca4b43c0db59a8a6d2e1edd3a80b37cf0ee86849"
+        },
+        {
+          "path": "0012-dtlsmgr-fix-debug-print-in-5.15.patch",
+          "sha256": "5da382057b1f47cc9402a5df8611caeae1f89a56447567bffdbe0c492962c518"
+        },
+        {
+          "path": "0013-tlsmgr-fix-SHA-header-include-in-5.15.patch",
+          "sha256": "c67cde30175e38614d928359a6b386418b95cc6b569b318723dfac404d8799a6"
+        },
+        {
+          "path": "0014-ovpnmgr-fix-SHA-header-include-in-5.15.patch",
+          "sha256": "a461e2a1570384efc35235323ad25da63c9d2901bdf7b0d994163119cdd773f1"
+        },
+        {
+          "path": "0015-tunipip6-fix-compile-error-in-5.15.patch",
+          "sha256": "24e47da9a9391b23111911d8b484162ab0310b485d88e5f9968ef332c63d0fe6"
+        },
+        {
+          "path": "0017-tlsmgr-fix-debug-print-in-5.15.patch",
+          "sha256": "5876bf88b852ec7fa41851e159e5f74ea5bd1fa52aa5389b387f7d1be1afd629"
+        },
+        {
+          "path": "0018-kernel-6.1-support.patch",
+          "sha256": "0adef5d84c5f10b22eadaf399a4ef9c4b692eeebea9be5bd537120363126bed6"
+        },
+        {
+          "path": "0019-wifi-meshmgr-fix-uninitialized-and-implicit.patch",
+          "sha256": "0553e69274bca723789a73c5ad19b400cba30baf9ea9abb40f6f810dbbd29e30"
+        },
+        {
+          "path": "0020-capwapmgr-fix-compile-error.patch",
+          "sha256": "54c8092c011e424fcab962d6ed1fcd71cc8a7ec4cdacea3736f97d5f1b3b9874"
+        },
+        {
+          "path": "0022-netlink-modularize-makefile.patch",
+          "sha256": "c88df6455237355587d426ebdfbfea244e4b59753b4510011b07b698f6adb472"
+        },
+        {
+          "path": "0023-mirror-fix-makefile.patch",
+          "sha256": "4cd33cb60ca71ce200c044531096b935ae69c4b0e131069a27295fcf7cebf7fc"
+        },
+        {
+          "path": "0024-switch-to-wifili.patch",
+          "sha256": "437504172a77dec11e467b96bfe5ac11af3c52705e5295831dbf6570f6899d84"
+        },
+        {
+          "path": "0025-nss-clients-add-kernel-6.6-support.patch",
+          "sha256": "75e1188c04fa6733081b9b13692092dadc0908d75779b2fdf0f09a5540c3cbea"
+        },
+        {
+          "path": "0026-qdisc-backport-12.4.patch",
+          "sha256": "7a7e0455418c4532bdff6a3cf72ea6465a9fa1ef1539b77ca44587f2d7a83a2f"
+        },
+        {
+          "path": "0027-bridge-backport-12.5.patch",
+          "sha256": "f04ab9b1afd00c89287eaca6b41d7f05260db37e256073a14199afea3ac27934"
+        },
+        {
+          "path": "0027-capwapmgr-backport-12.5.patch",
+          "sha256": "746a31d03de81d1ec875f0a3dd4d7ca5b255bd444b52ace41d5781e1d76690ca"
+        },
+        {
+          "path": "0027-map-t-backport-12.5.patch",
+          "sha256": "81b372c171d30431c5f4e178ad75ebdc29dee10a43f5ca0daa623349e83f75dd"
+        },
+        {
+          "path": "0027-match-backport-12.5.patch",
+          "sha256": "2f010aab5abd0ffc1faa7d70f7fe5fe7f69ca8475c921ec3febca02e98375948"
+        },
+        {
+          "path": "0027-pptp-backport-12.5.patch",
+          "sha256": "48aff541d8ea9e53dae214a144ee0888498cfdebfc8a186c37d3805120ecbbd4"
+        },
+        {
+          "path": "0027-vlan-backport-12.5.patch",
+          "sha256": "3baae09032ce49a851f6533edb9705a6167c0da181ff28267b3e0ca137932268"
+        },
+        {
+          "path": "0028-dtlsmgr-use-eth_hw_addr_set.patch",
+          "sha256": "346e8f86d083d304d9f5e9796f5a428dba5ff5f908e8fbdece93b7c06500462e"
+        },
+        {
+          "path": "0029-dtlsmgr-properly-update-stats.patch",
+          "sha256": "86d20d8b948ad487e5d5e2e1da62176ebd6b4b96dfdb49cdf38917258dfc9f79"
+        },
+        {
+          "path": "0030-fixup-compiler-errors.patch",
+          "sha256": "e96dd9795c46900ba9a714fcc3e99427f4587cdfdf525bf127553a65fc321b5d"
+        },
+        {
+          "path": "0031-kernel-6.12-support.patch",
+          "sha256": "3880cb95aad23fe733f71a35dfe0ab3e26531d1cac726cec23376dda5a6eb62e"
+        },
+        {
+          "path": "0032-match-fix-procfs-read-write.patch",
+          "sha256": "e819faeaac096c52efa3c630b9747e6248fc0c8f5d9dc1c6d303787a7ee1777c"
+        },
+        {
+          "path": "0033-qdisc-backport-12.5.patch",
+          "sha256": "b6366c88edccc65dacfeed63799e12d232404ab62f5834498e2f360c7a3221a8"
+        },
+        {
+          "path": "0034-ipsecmgr-backport-12.5.patch",
+          "sha256": "8725f448a962b08adc0fb51b8f12f8ad720c6377426892f996a6c05ae8f71f2b"
+        },
+        {
+          "path": "0035-netlink-backport-12.5.patch",
+          "sha256": "8d9a4b0cfb28d49e85d61c5c3d7d85274bd3a0a0bb171ba2f232fd370663cd54"
+        },
+        {
+          "path": "0036-vxlanmgr-backport-12.5.patch",
+          "sha256": "bcd06d75ef898a08aba0a9c659630ae9b5f0dbe502872d5b10396e694efd8b0b"
+        },
+        {
+          "path": "0037-netlink-reorganize-log-level.patch",
+          "sha256": "c8d3a7de23f48d2e32dd22a40ac4891f5bdeca5ba73e989cf238200a1f125b24"
+        }
+      ],
+      "patch_directory": "patches-11.4"
+    },
+    {
+      "name": "qca-nss-drv",
+      "repository": "CodeLinaro-mirror/qsdk_oss_lklm_nss-drv",
+      "source_commit": "53e586323efa906f5769e16e118b7c02226d9de3",
+      "recipe": "package/nss-feed/qca-nss-drv",
+      "url": "https://codeload.github.com/CodeLinaro-mirror/qsdk_oss_lklm_nss-drv/tar.gz/53e586323efa906f5769e16e118b7c02226d9de3",
+      "archive_sha256": "b927ab866e87f300267fe2e6b449dacb306eca910575f900f4b5abe2e9e14e5e",
+      "patches": [
+        {
+          "path": "0001-nss-drv-replace-ioremap_nocache-with-ioremap.patch",
+          "sha256": "00438a2722b2e962d837c2630f63ded3390f049aa89cb4ecf2e2a226aab35cb6"
+        },
+        {
+          "path": "0002-Control-fab-scaling-from-package-Makefile.patch",
+          "sha256": "cc5debdc21841a06e769bc778017693e2d288e59ff2d6f399983b07a153883a5"
+        },
+        {
+          "path": "0005-fix-NULL-pointer-exception.patch",
+          "sha256": "58dd305ac69e2e8cc0184a77e235c0d45fc05a07d4a45b9428fcb37bbb4ddde9"
+        },
+        {
+          "path": "0006-Fix-Kernel-Panic-dma-with-NULL-dev.patch",
+          "sha256": "44c247f3d3dde271b65befc21ab0596feae59ef2a1053a69bead67a9f7641ccd"
+        },
+        {
+          "path": "0006-nss-drv-Fix-nss_clmap_stats-enum-int-compilation-error-GCC-13.patch",
+          "sha256": "75a3244cd2f25a9c0c49cc29b71cb6122a508b73fb1f87c318ab9f7eb1a0c190"
+        },
+        {
+          "path": "0007-Exported-set-nexthop-function.patch",
+          "sha256": "f4fc344fe7f09b52e4d4f7fa8f47eacd0007558f706f3d0da665acf3f2ef425a"
+        },
+        {
+          "path": "0007-nss-drv-Fix-nss_wifili_if-compilation-error-GCC-13.patch",
+          "sha256": "ed9cc71593e868e0c0526bbae664ae9505170186d1e48e30bba4db3c90f549f3"
+        },
+        {
+          "path": "0009-kernel-5.15-support.patch",
+          "sha256": "da988b1a9baeb1796bcf8ae26b04975a13249feec49c1719bef94c486f823197"
+        },
+        {
+          "path": "0010-nss-drv-dynamic-interface-desc.patch",
+          "sha256": "b7db97d0da74131657bb33b63743f710688a9b469f605fdbcd8eb44e23685f21"
+        },
+        {
+          "path": "0011-rework-getting-the-reserved-memory-size.patch",
+          "sha256": "77affdab33ab35032b23f6290293b43838ee940845d091da41747fe95adb8d9d"
+        },
+        {
+          "path": "0012-Makefile-modularize-driver.patch",
+          "sha256": "42c10311eadef6d0e973476f2ab4978b7a522821211d8dbdad436c69cec92496"
+        },
+        {
+          "path": "0012-nss-drv-quiet-messages.patch",
+          "sha256": "f871dde6f89c7e7c5195430f58f689cc026fad83fb81753516c18f3bd159bafd"
+        },
+        {
+          "path": "0013-backport-12.4-docs.patch",
+          "sha256": "44c77d72474feff7c783e6672d2040399562e835f94a4f409d60ca75969789cd"
+        },
+        {
+          "path": "0013-backport-12.4.patch",
+          "sha256": "5857bf297bd3d19b8220c2398c98292f212b5d483acb28c4451feb3cc63b7605"
+        },
+        {
+          "path": "0013-nss-drv-remove-legacy-wifi.patch",
+          "sha256": "c0d6eb28e1ddb7758a828a131dfe96e717ff5dd460b7e9e729b18f346f7aaede"
+        },
+        {
+          "path": "0014-Add-kernel-6.1-support.patch",
+          "sha256": "1680be20c127b29d098d345948e086e42f209c5c3413718e91066b9f4c9fdd1a"
+        },
+        {
+          "path": "0014-nss-drv-avoid-recreating-virt_if.patch",
+          "sha256": "d0ff3786fb8c2b5ef63a96be805787ddecfa5dae29be6052bcc0f104f8cdb610"
+        },
+        {
+          "path": "0015-nss-drv-fix-igs.patch",
+          "sha256": "0e02211d7153d886c592b44d48d786edcf491c39888e688b43dea085354e18ad"
+        },
+        {
+          "path": "0016-nss-drv-add-support-for-kernel-6.6.patch",
+          "sha256": "7fbd48bfc0aa00227e52eecc0a3af580bc39287e0ed2c7d991547731a1cdddf5"
+        },
+        {
+          "path": "0016-rework-NSS_CORE_DMA_CACHE_MAINT-ops.patch",
+          "sha256": "ccd77252137a2952ba50cedfa68159908f0a8546603b163e9e83a4d77629f2b8"
+        },
+        {
+          "path": "0017-nss-drv-remove-gmac-stat.patch",
+          "sha256": "36d99604d4f2dd7047ba6fc09ebd75b508f25454495a22157bb7423eec92a059"
+        },
+        {
+          "path": "0017-nss-drv-wifili-add-exported-symbols.patch",
+          "sha256": "deca64e30f26d5985906904a5f147083c5086ff68a2406a588b277962a219fcb"
+        },
+        {
+          "path": "0018-nss-drv-more-uniform-kernel-msg.patch",
+          "sha256": "b0d82ccfaf530e4133462d6ae0504a24e04d9b75695a73f5d2b74e9547efa75c"
+        },
+        {
+          "path": "0019-nss-drv-mac80211-disable-signal-redirection.patch",
+          "sha256": "3a8a4c25c47c9292ca48224a6177da22a0b31ac104c87f172a37872e072f86bc"
+        },
+        {
+          "path": "0019-nss-drv-reorg-irq-logic.patch",
+          "sha256": "949788ba0c9b7c776a43abd48bc7de95b00758c9d229c8b823c2a53b1b24f5dd"
+        },
+        {
+          "path": "0022-nss-drv-display-fw-version.patch",
+          "sha256": "6dc2b4e1c25378d13f3c3b7fd767c67f0e26c9f1f0ded8c6af2913062bf4c89e"
+        },
+        {
+          "path": "0022-nss-drv-set-addr-to-const.patch",
+          "sha256": "6daf1c9c2f8432e1acc9c9c6101ad17a96ff9cc8ba7fbcfd1a82cd1415d3e9cf"
+        },
+        {
+          "path": "0023-add-boot-delay.patch",
+          "sha256": "bfe078f50955e4f6ab7d080dcb0b32664dc94291151fb1241a8896346a84d0af"
+        },
+        {
+          "path": "0023-nss-drv-add-missing-wifili-err-codes.patch",
+          "sha256": "b5adf96e9bcab01f998e272d12f53fc2eb019797e7a80d09b76e899c79885ef8"
+        },
+        {
+          "path": "0024-fix-mesh-stats-naming.patch",
+          "sha256": "18b2e1e44ae5450440da4463f78b30ef6005c415bafa2e6d86daf2f3d484e973"
+        },
+        {
+          "path": "0025-fix-missing-macro-gre_tunnel.patch",
+          "sha256": "5539f93976b7a07a78b3b8bf64f2ce9fbaf1a0056d6df7a81d7abf181c1c2541"
+        },
+        {
+          "path": "0025-nss_rps-fix-procfs-read-write.patch",
+          "sha256": "c405306962f89729b53fde8b7d1eea687ca73175c945d74e348d18e6ccb233ac"
+        },
+        {
+          "path": "0026-nss-drv-add-support-for-kernel-6.12.patch",
+          "sha256": "0571941efa179bd0ca9b2d5f1b235ea0d04a6d0a2c4bbc8bce89675349f8d86d"
+        },
+        {
+          "path": "0026-treewide-fix-compiler-warnings.patch",
+          "sha256": "5b03c147964b3d1d416e08e9f3953e127c03fcc324da24c2b118df4c76197c58"
+        },
+        {
+          "path": "0027-Makefile-set-rearrange-arch-features.patch",
+          "sha256": "41ca7b13ad9442b8015b769e6fbbe172165e00a8fa34e75339bdc8b1b45a7a67"
+        },
+        {
+          "path": "0027-nss-drv-fix-null-ptr-log.patch",
+          "sha256": "510302f99e274366e6dc1a00099f72659a1856b1f84b722a0eb71316d48b935d"
+        },
+        {
+          "path": "0028-backport-12.5-fix-greredir-stats-partial-copy.patch",
+          "sha256": "fc56e5ba732466af72b703ab3ae2ff06ba9e73ca2ad06f4bbc1e7ceffd69ae71"
+        },
+        {
+          "path": "0028-nss_ppe_vp-fix-create-destroy.patch",
+          "sha256": "d2b9ce7070e043ed3df7b715acc22811895210fb52f82eee7a12298eb9f26fd7"
+        },
+        {
+          "path": "0029-backport-12.5-baseline-stats-write-functionality.patch",
+          "sha256": "f1b0281d1885d30480ceee9d08d18db536985917abb458a61905200afd972e16"
+        },
+        {
+          "path": "0030-backport-11.5-pn_mq_en.patch",
+          "sha256": "84973c2d6b18a3ae28216e389cf1f680496f127daa6a9c90524dfe58d1bd750e"
+        },
+        {
+          "path": "0030-backport-12.5-ipq50xx-fixes.patch",
+          "sha256": "52fead070b902383f24306bbf04eec98f6f50297eaef2fb6fef0f2c481097e7b"
+        }
+      ],
+      "patch_directory": "patches-11.4"
+    }
+  ],
+  "nss_feed": {
+    "repository": "qosmio/nss-packages",
+    "commit": "0d970dbf0185e3f53709bd803e8a466598023c57",
+    "url": "https://codeload.github.com/qosmio/nss-packages/tar.gz/0d970dbf0185e3f53709bd803e8a466598023c57",
+    "sha256": "b62c3dbb48c98d31648ba8154cff9570da956d552ef6fc15634084dbf931c0b0",
+    "git_commit_file": "pins/nss-feed-0d970dbf.commit"
+  },
+  "target": {
+    "board": "qualcommax",
+    "subtarget": "ipq807x",
+    "elf_machine": "AArch64",
+    "device": "dynalink_dl-wrx36",
+    "firmware": "11_4",
+    "mesh": true
+  },
+  "expected_prepared_sources": {
+    "base": {
+      "patch_count": 256,
+      "source_sha256": {
+        "drivers/net/wireless/ath/ath11k/nss.c": "a481cc6788c277d4910d39ca84231ff80764af31c104f70da56699bd94e89561",
+        "net/mac80211/tx.c": "c4b2ac0fe3f8e2b0f4a22152f8e3d25f674db07a34fc5726b8599a5f348abcbe"
+      }
+    },
+    "candidate": {
+      "patch_count": 259,
+      "source_sha256": {
+        "drivers/net/wireless/ath/ath11k/nss.c": "1a2879e8eba254b5cc6a2d2e497ef8b6299e59d5c5a18fd10ce4678cffb2309e",
+        "net/mac80211/tx.c": "1afb997f4be1320a1227f21e0039f1163b647b80313851934f78d3cf3dfd6f77"
+      }
+    }
+  },
+  "layout_probe": "peer"
+}

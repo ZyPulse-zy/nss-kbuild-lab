@@ -11,7 +11,9 @@ import struct
 import subprocess
 
 
-def probe_layout(build: Path, env, kernel: Path):
+def probe_layout(build: Path, env, kernel: Path, mode="retry"):
+    if mode not in ("retry", "peer"):
+        raise ValueError("Unknown source-interface probe mode")
     output = build / "compiled-layout-probes"
     attempt = 2
     while output.exists():
@@ -60,10 +62,15 @@ def probe_layout(build: Path, env, kernel: Path):
             "static const unsigned int nss_layout_probe[] "
             '__attribute__((used, section(".nss_layout_probe"))) = {\n'
             "sizeof(struct nss_wifili_peer_ctrl_stats),\n"
-            "__builtin_offsetof(struct nss_wifili_peer_ctrl_stats, retry),\n"
-            "sizeof(struct nss_wifili_retry_ctrl_stats),\n"
-            "};\n"
         )
+        # NSS 11.4 predates the separate retry structure. Probe the common
+        # peer row instead of inventing fields absent from the actual header.
+        if mode == "retry":
+            text += (
+                "__builtin_offsetof(struct nss_wifili_peer_ctrl_stats, retry),\n"
+                "sizeof(struct nss_wifili_retry_ctrl_stats),\n"
+            )
+        text += "};\n"
         source.write_text(text)
         obj = output / (label + ".o")
         result = subprocess.run(
@@ -86,21 +93,26 @@ def probe_layout(build: Path, env, kernel: Path):
             timeout=10,
             env=env,
         )
-        values = struct.unpack("<III", data.read_bytes())
+        values = struct.unpack("<III" if mode == "retry" else "<I", data.read_bytes())
         records[label] = {
             "row_bytes": values[0],
-            "retry_offset": values[1],
-            "retry_bytes": values[2],
             "selected_12_5": "-DNSS_FIRMWARE_VERSION_12_5" in flags,
             "saved_kbuild_command_sha256": hashlib.sha256(raw.encode()).hexdigest(),
             "probe_object_sha256": hashlib.sha256(obj.read_bytes()).hexdigest(),
             "complete_headers": True,
             "firmware_validated": False,
+            "probe_mode": mode,
         }
+        if mode == "retry":
+            records[label].update(retry_offset=values[1], retry_bytes=values[2])
         records[label]["compile_working_directory"] = str(cwd)
         records[label]["probe_relative_directory"] = str(output.relative_to(build))
-    assert records["driver"]["row_bytes"] == records["candidate"]["row_bytes"] == 212
-    assert records["base"]["row_bytes"] == 196
-    assert records["base"]["retry_offset"] == 180
-    assert records["candidate"]["retry_offset"] == records["driver"]["retry_offset"] == 188
+    if mode == "retry":
+        assert records["driver"]["row_bytes"] == records["candidate"]["row_bytes"] == 212
+        assert records["base"]["row_bytes"] == 196
+        assert records["base"]["retry_offset"] == 180
+        assert records["candidate"]["retry_offset"] == records["driver"]["retry_offset"] == 188
+    else:
+        assert records["driver"]["row_bytes"] > 0
+        assert len({record["row_bytes"] for record in records.values()}) == 1
     return records
