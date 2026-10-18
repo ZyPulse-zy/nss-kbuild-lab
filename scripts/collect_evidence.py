@@ -17,7 +17,13 @@ def collect(workspace, output):
         raise ValueError("Evidence destination must be outside the build workspace")
     output.mkdir(exist_ok=False, parents=True)
     summary = json.loads((workspace / "result.json").read_text())
-    selected = {file for file in workspace.glob("*.json") if file.is_file()}
+    # Keep the public report set explicit. The hidden workspace marker repeats
+    # result.json's context and would be omitted by default artifact uploads.
+    selected = {
+        workspace / name
+        for name in ("result.json", "commands.json", "source-proof.json", "kernel-proof.json")
+        if (workspace / name).is_file()
+    }
     selected.update(workspace.glob("logs/*.log"))
     selected.update(workspace.glob("previous-results/*.json"))
     module_directories = sorted(workspace.glob("modules*"))
@@ -25,14 +31,13 @@ def collect(workspace, output):
     for directory in module_directories:
         if not directory.is_dir():
             continue
-        selected.update(directory.glob("*.json"))
         selected.update(directory.glob("*.log"))
-        selected.update(directory.glob("compiled-layout*/*.json"))
         selected.update(directory.glob("compiled-layout*/*.c"))
         selected.update(directory.glob("compiled-layout*/*.log"))
         result = directory / "result.json"
         if not result.is_file():
             continue
+        selected.add(result)
         report = json.loads(result.read_text())
         for phase in report["phases"]:
             if digest(directory / phase["log"]) != phase["log_sha256"]:
