@@ -1,12 +1,16 @@
 # SPDX-License-Identifier: GPL-2.0-only
 import hashlib
+import gc
 import io
 import json
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 import tarfile
 import tempfile
 import unittest
+import warnings
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from lab_io import Evidence, acquire, digest, extract_archive, tree_digest
@@ -32,6 +36,30 @@ class LabIoTests(unittest.TestCase):
         output = self.root / "output"
         extract_archive(archive, output)
         self.assertEqual((output / "a/b.txt").read_bytes(), b"content\n")
+
+    @unittest.skipUnless(shutil.which("zstd"), "requires the actual zstd executable")
+    def test_zstd_archive_can_be_a_read_only_cache_symlink(self):
+        raw = self.root / "source.tar"
+        with tarfile.open(raw, "w") as tar:
+            member = tarfile.TarInfo("root/data")
+            member.size = 7
+            tar.addfile(member, io.BytesIO(b"cached\n"))
+        cached = self.root / "cache-object"
+        subprocess.run(["zstd", "-q", str(raw), "-o", str(cached)], check=True)
+        cached.chmod(0o444)
+        original = cached.read_bytes()
+        link = self.root / "input.tar.zst"
+        link.symlink_to(cached)
+        output = self.root / "output"
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", ResourceWarning)
+            extract_archive(link, output)
+            gc.collect()
+        self.assertFalse([item for item in caught if item.category is ResourceWarning])
+        self.assertEqual((output / "data").read_bytes(), b"cached\n")
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(cached.read_bytes(), original)
+        self.assertEqual(cached.stat().st_mode & 0o777, 0o444)
 
     def test_rejects_path_traversal_without_escape(self):
         archive = self.archive([("root/../escape", b"bad")])
@@ -110,7 +138,9 @@ class LabIoTests(unittest.TestCase):
     def test_allowlist_cannot_extend_beyond_sdk_host_commands(self):
         with self.assertRaisesRegex(ValueError, "Invalid SDK host-link pin"):
             extract_archive(
-                self.sdk_archive(), self.root / "bad-pin", {"etc/config": "/builder/file"}
+                self.sdk_archive(),
+                self.root / "bad-pin",
+                {"etc/config": "/builder/file"},
             )
         with self.assertRaises(tarfile.FilterError):
             extract_archive(
@@ -142,7 +172,12 @@ class LabIoTests(unittest.TestCase):
         evidence = Evidence(self.root)
         with self.assertRaisesRegex(RuntimeError, "failed"):
             evidence.run(
-                "probe", [sys.executable, "-c", 'print("original failure"); raise SystemExit(3)']
+                "probe",
+                [
+                    sys.executable,
+                    "-c",
+                    'print("original failure"); raise SystemExit(3)',
+                ],
             )
         failed = self.root / evidence.records[0]["log"]
         original = failed.read_bytes()
