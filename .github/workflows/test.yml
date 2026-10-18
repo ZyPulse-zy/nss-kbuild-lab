@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: [ipq60xx, ipq807x]
+        profile: [ipq60xx, ipq807x, ipq807x-mesh]
     steps:
       - uses: actions/checkout@v4
       - name: Install native build tools
