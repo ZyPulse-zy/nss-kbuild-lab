@@ -15,6 +15,13 @@ The first supported profile is **IPQ60xx / NSS 12.5**, using the public
 JDCloud RE-CS-02 compile configuration. Pins in [ipq60xx.json](pins/ipq60xx.json)
 identify every source archive, original Git commit, SDK and package patch:
 
+An **IPQ807x / NSS 12.5** candidate profile selects Dynalink DL-WRX36
+(IPQ8072), with its separately pinned official SDK and builder-host link list.
+Run it with `--profile ipq807x`. This branch requires a successful complete
+kernel/dependency/wireless CI build before that profile is considered supported.
+The lab rejects a resolved Kconfig that silently falls back to another device
+or subtarget, and records the selected options in the kernel proof.
+
 | Input | Pin |
 | --- | --- |
 | qosmio/openwrt-ipq | `92a2d104145c8d265851c4b388a41bd8e9c21cd9` |

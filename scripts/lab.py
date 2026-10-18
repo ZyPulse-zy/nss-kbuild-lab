@@ -195,6 +195,24 @@ def prepare_sources(manifest, workspace, evidence, archives):
     (workspace / "source-proof.json").write_text(json.dumps(proof, indent=2) + "\n")
 
 
+def verify_target_configuration(manifest, configuration):
+    """Reject Kconfig fallback to another target or the default device."""
+    target = manifest["target"]
+    prefix = "CONFIG_TARGET_" + target["board"] + "_" + target["subtarget"]
+    required = (
+        "CONFIG_ATH11K_NSS_SUPPORT=y",
+        "CONFIG_NSS_FIRMWARE_VERSION_12_5=y",
+        'CONFIG_GCC_VERSION="14.3.0"',
+        prefix + "=y",
+        prefix + "_DEVICE_" + target["device"] + "=y",
+    )
+    resolved = set(configuration.splitlines())
+    for option in required:
+        if option not in resolved:
+            raise ValueError("Required build option missing: " + option)
+    return list(required)
+
+
 def build_kernel(manifest, workspace, evidence, jobs):
     source = workspace / "openwrt"
     env = os.environ.copy()
@@ -217,18 +235,7 @@ def build_kernel(manifest, workspace, evidence, jobs):
         command += ["BISON_PKGDATADIR=" + env["BISON_PKGDATADIR"]]
     evidence.run("defconfig", command + ["defconfig"], env=env, timeout=180)
     configuration = (source / ".config").read_text()
-    for required in (
-        "CONFIG_ATH11K_NSS_SUPPORT=y",
-        "CONFIG_NSS_FIRMWARE_VERSION_12_5=y",
-        'CONFIG_GCC_VERSION="14.3.0"',
-        "CONFIG_TARGET_"
-        + manifest["target"]["board"]
-        + "_"
-        + manifest["target"]["subtarget"]
-        + "=y",
-    ):
-        if required not in configuration:
-            raise ValueError("Required build option missing: " + required)
+    verified_options = verify_target_configuration(manifest, configuration)
     evidence.run(
         "kernel-prepare",
         command + ["target/linux/prepare", "V=s", "-j" + str(jobs)],
@@ -255,6 +262,8 @@ def build_kernel(manifest, workspace, evidence, jobs):
     kernel = matches[0]
     proof = {
         "passed": True,
+        "target": manifest["target"],
+        "verified_options": verified_options,
         "openwrt_config_sha256": digest(source / ".config"),
         "kernel": str(kernel.relative_to(workspace)),
         "inputs": {
@@ -338,7 +347,7 @@ def build_modules(manifest_path, workspace, evidence, jobs):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, required=True)
-    parser.add_argument("--profile", choices=["ipq60xx"], default="ipq60xx")
+    parser.add_argument("--profile", choices=["ipq60xx", "ipq807x"], default="ipq60xx")
     parser.add_argument("--jobs", type=int, choices=range(1, 9), default=4)
     parser.add_argument("--archive-cache", type=Path, help="read-only cache with SHA256 filenames")
     parser.add_argument(

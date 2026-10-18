@@ -336,7 +336,8 @@
   "target": {
     "board": "qualcommax",
     "subtarget": "ipq60xx",
-    "elf_machine": "AArch64"
+    "elf_machine": "AArch64",
+    "device": "jdcloud_re-cs-02"
   },
   "expected_prepared_sources": {
     "base": {
