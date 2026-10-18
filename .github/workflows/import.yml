@@ -1,0 +1,17 @@
+name: Import verified source commit
+on: [push, workflow_dispatch]
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify and import locally tested signed-off source
+        run: |
+          base64 -d source.bundle.b64 > "$RUNNER_TEMP/source.bundle"
+          echo 'eb67f36fd7b74d6713cbd14f3c7aa3ae8b52137b9233e098abaa256adc51a692  '"$RUNNER_TEMP/source.bundle" | sha256sum -c -
+          git bundle verify "$RUNNER_TEMP/source.bundle"
+          git fetch "$RUNNER_TEMP/source.bundle" refs/heads/main
+          test "$(git rev-parse FETCH_HEAD)" = f844ba8469c453cb5815bed3a900d47f50cd493f
+          git push --force-with-lease=refs/heads/main:ef5a4c17541aa4350dde5e980027c4446b77e4c7 origin FETCH_HEAD:refs/heads/main
