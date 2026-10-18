@@ -1,0 +1,19 @@
+name: Import NSS 11.4 mesh candidate
+on: [push, workflow_dispatch]
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify signed-off candidate and create feature branch
+        run: |
+          git fetch origin main
+          test "$(git rev-parse FETCH_HEAD)" = ee58c76e4a0aec3564b6b3cc1f11f4e1d6dc9d65
+          base64 -d source.bundle.b64 > "$RUNNER_TEMP/source.bundle"
+          echo '8fa0980e32d811787244d87b87727e1dbc9698ea045e9f8545921e7c3f7ff140  '"$RUNNER_TEMP/source.bundle" | sha256sum -c -
+          git bundle verify "$RUNNER_TEMP/source.bundle"
+          git fetch "$RUNNER_TEMP/source.bundle" HEAD
+          test "$(git rev-parse FETCH_HEAD)" = 1ba9f5123f8f7692648cb07193672058a6ea899e
+          git push origin FETCH_HEAD:refs/heads/feat/nss11-mesh-profile
