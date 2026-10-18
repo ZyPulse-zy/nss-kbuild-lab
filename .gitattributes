@@ -1,0 +1,3 @@
+# Unified diffs preserve literal upstream whitespace after a context prefix.
+# Their full application and exact output are checked by the lab itself.
+patches/*.patch -whitespace

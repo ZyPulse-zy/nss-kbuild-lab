@@ -1,0 +1,13 @@
+tree f968ab662718f79208178927f8e3ece7a5e27cb3
+parent e16ba70163363720155df4a086e70441966b9f0f
+author Sean Khan <datapronix@protonmail.com> 1767370664 -0500
+committer Sean Khan <datapronix@protonmail.com> 1767397179 -0500
+
+nss-firmware: use prepackaged tarball to avoid hash flakiness
+
+Use the GitHub release tarball and pin PKG_HASH instead of building an
+archive from the source tree. Different combinations of host tar and the
+build's zstd produced inconsistent .tar.zst checksums (same reported
+versions but different binaries), causing download/hash mismatches.
+
+Signed-off-by: Sean Khan <datapronix@protonmail.com>

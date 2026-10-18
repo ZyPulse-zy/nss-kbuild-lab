@@ -1,0 +1,1509 @@
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 79bd479..de1ba16 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -11,7 +11,7 @@ include $(INCLUDE_DIR)/kernel.mk
+ PKG_NAME:=mac80211
+ 
+ PKG_VERSION:=6.18.26
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+@@ -38,6 +38,8 @@ PKG_CONFIG_DEPENDS:= \
+ 	CONFIG_PACKAGE_MAC80211_TRACING \
+ 	CONFIG_PACKAGE_MAC80211_NSS_SUPPORT \
+ 	CONFIG_PACKAGE_MAC80211_NSS_REDIRECT \
++	CONFIG_NSS_FIRMWARE_VERSION_11_4 \
++	CONFIG_NSS_FIRMWARE_VERSION_12_5 \
+ 	CONFIG_PACKAGE_IWLWIFI_DEBUG \
+ 	CONFIG_PACKAGE_IWLWIFI_DEBUGFS \
+ 	CONFIG_PACKAGE_RTLWIFI_DEBUG
+@@ -311,6 +313,9 @@ endif
+ 
+ ifdef CONFIG_ATH11K_NSS_SUPPORT
+ 	IREMAP_CFLAGS+=-I$(STAGING_DIR)/usr/include/qca-nss-drv -I$(STAGING_DIR)/usr/include/qca-nss-clients
++ifeq ($(CONFIG_NSS_FIRMWARE_VERSION_12_5),y)
++	C_DEFINES+=-DNSS_FIRMWARE_VERSION_12_5
++endif
+ endif
+ 
+ ifeq ($(CONFIG_NSS_FIRMWARE_VERSION_11_4),y)
+diff --git a/package/kernel/mac80211/patches/nss/ath11k/999-921-ath11k-nss-reset-per-peer-drop-total.patch b/package/kernel/mac80211/patches/nss/ath11k/999-921-ath11k-nss-reset-per-peer-drop-total.patch
+new file mode 100644
+index 0000000..1d5f57a
+--- /dev/null
++++ b/package/kernel/mac80211/patches/nss/ath11k/999-921-ath11k-nss-reset-per-peer-drop-total.patch
+@@ -0,0 +1,22 @@
++From: Yuen Su <zypulsecore@gmail.com>
++Subject: [PATCH] wifi: ath11k: nss: reset the drop total for each peer
++
++The temporary tx_dropped accumulator is initialized before the peer loop,
++so every peer after the first includes drops from earlier peers in the
++same notification. Reset it before summing the current peer's bins.
++
++This changes statistics accounting only; packet handling, wire layout,
++firmware settings and existing counter wrap behavior are unchanged.
++
++Signed-off-by: Yuen Su <zypulsecore@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/nss.c
+++++ b/drivers/net/wireless/ath/ath11k/nss.c
++@@ -193,6 +193,7 @@
++ 		peer->nss.nss_stats->tx_bytes += tx_bytes;
++ 		peer->nss.nss_stats->tx_retries += pstats->tx.retries;
++ 
+++		tx_dropped = 0;
++ 		for (j = 0; j < NSS_WIFILI_TQM_RR_MAX; j++)
++ 			tx_dropped += pstats->tx.dropped.drop_stats[j];
++ 
+diff --git a/package/kernel/mac80211/patches/nss/ath11k/999-922-ath11k-nss-unregister-on-unready-context.patch b/package/kernel/mac80211/patches/nss/ath11k/999-922-ath11k-nss-unregister-on-unready-context.patch
+new file mode 100644
+index 0000000..0264688
+--- /dev/null
++++ b/package/kernel/mac80211/patches/nss/ath11k/999-922-ath11k-nss-unregister-on-unready-context.patch
+@@ -0,0 +1,21 @@
++From: Yuen Su <zypulsecore@gmail.com>
++Subject: [PATCH] wifi: ath11k: nss: unregister an unready init context
++
++The interface is registered before checking the NSS context state. If that
++check fails, unwind through unregister so the subsystem data-path entry
++cannot retain the abandoned ath11k context. Earlier failures still use the
++unregistered cleanup path.
++
++Signed-off-by: Yuen Su <zypulsecore@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/nss.c
+++++ b/drivers/net/wireless/ath/ath11k/nss.c
++@@ -4508,7 +4508,7 @@
++ 
++ 	if (nss_cmn_get_state(nss_contex) != NSS_STATE_INITIALIZED) {
++ 		ath11k_warn(ab, "nss state in default init state\n");
++-		goto free;
+++		goto unregister;
++ 	}
++ 
++ 	/* The registered soc context is stored in ab, and will be used for
+diff --git a/package/kernel/mac80211/patches/nss/subsys/999-921-mac80211-initialize-offload-host-queue.patch b/package/kernel/mac80211/patches/nss/subsys/999-921-mac80211-initialize-offload-host-queue.patch
+new file mode 100644
+index 0000000..5e1a678
+--- /dev/null
++++ b/package/kernel/mac80211/patches/nss/subsys/999-921-mac80211-initialize-offload-host-queue.patch
+@@ -0,0 +1,24 @@
++From: Yuen Su <zypulsecore@gmail.com>
++Subject: [PATCH] mac80211: initialize host queue for driver-selected TX queues
++
++HAS_TX_QUEUE drivers bypass ieee80211_select_queue(), leaving queue
++uninitialized before indexing vif.hw_queue. Initialize the host AC to
++best effort while retaining the packet priority and driver queue mapping.
++
++The driver-selected mapping can represent a CPU/hash queue rather than an
++802.11 AC, so it cannot safely index the four-entry vif.hw_queue array.
++The normal software queue selection still overwrites this default.
++
++Signed-off-by: Yuen Su <zypulsecore@gmail.com>
++---
++--- a/net/mac80211/tx.c
+++++ b/net/mac80211/tx.c
++@@ -4734,7 +4734,7 @@
++ 	struct tid_ampdu_tx *tid_tx;
++ 	struct sk_buff *seg, *next;
++ 	unsigned int skbs = 0, len = 0;
++-	u16 queue;
+++	u16 queue = IEEE80211_AC_BE;
++ 	unsigned char *ra = ehdr->h_dest;
++ 	bool multicast;
++ 	u8 tid;
+diff --git a/package/kernel/mac80211/tests/README-nss-init.md b/package/kernel/mac80211/tests/README-nss-init.md
+new file mode 100644
+index 0000000..05e3234
+--- /dev/null
++++ b/package/kernel/mac80211/tests/README-nss-init.md
+@@ -0,0 +1,46 @@
++# NSS initialization registration lifetime
++
++`ath11k_nss_init()` registers an NSS interface before checking its context
++state. On the unready-context branch, the original jumps straight to local
++memory cleanup and leaves the subsystem data-path registration holding `ab`.
++The repair routes this branch through the existing unregister label. Failures
++before registration keep their existing cleanup path and return values.
++
++```sh
++python3 package/kernel/mac80211/tests/test-nss-init.py \
++  --driver-source /path/to/nss-drv/nss_wifili.c
++# Optionally apply every complete mac80211 recipe patch first:
++python3 package/kernel/mac80211/tests/test-nss-init.py \
++  --driver-source /path/to/nss-drv/nss_wifili.c \
++  --archive /path/to/backports-6.18.26.tar.zst --sanitize
++```
++
++Use the driver pinned by the NSS feed:
++`d5ee67bd84d1ee7ed81eb6758e62a6db5a0cf4c7`, available at
++[the CodeLinaro source mirror](https://github.com/CodeLinaro-mirror/qsdk_oss_lklm_nss-drv/blob/d5ee67bd84d1ee7ed81eb6758e62a6db5a0cf4c7/nss_wifili.c).
++The runner verifies the whole file's Git blob SHA, then extracts its complete
++`nss_register_wifili_if()` and `nss_unregister_wifili_if()` implementations.
++The nss-packages feed at `0d970dbf0185e3f53709bd803e8a466598023c57` does not
++patch this file. These real functions demonstrate that registration does not
++reject an uninitialized context; its state check occurs later in ath11k.
++
++The runner reconstructs the complete actual ath11k `nss.c` in patch order and
++extracts the complete init function. `--archive` additionally verifies the
++recipe archive hash and applies all complete patch groups with fuzz=0.
++The original (`--without-fix`) must fail specifically with
++`FAIL unready context: registration survived failed init`.
++
++For each of the three valid NSS interface numbers, the 27-scenario suite covers
++success, unsupported target, message allocation failure, partial descriptor
++allocation failure, invalid interface, unready context, send failure, completion
++timeout and NACK. It checks error preservation, registration/unregistration
++pairing, local message release and descriptor cleanup. Both mesh preprocessing
++modes run; each passes 231 assertions. `--sanitize`, `--cc` and `--runner` support
++sanitizer and cross execution with the same source functions.
++
++Core data-path registration, allocations, ring/message structures, completion
++and kernel APIs are bounded test fixtures. The source registration/init control
++flow is real; the fixture does not establish DMA behavior, callback concurrency,
++actual timeout timing, complete module compilation or firmware/hardware results.
++No source-tree cleanup or full-device crash diagnosis is inferred from this
++single failure-path fix. No router, driver or service is loaded by the test.
+diff --git a/package/kernel/mac80211/tests/README-nss-layout.md b/package/kernel/mac80211/tests/README-nss-layout.md
+new file mode 100644
+index 0000000..4542f5b
+--- /dev/null
++++ b/package/kernel/mac80211/tests/README-nss-layout.md
+@@ -0,0 +1,54 @@
++# Selected NSS export layout regression
++
++The mac80211 recipe passes the 11.4 selection macro but omits the 12.5 macro.
++The NSS driver recipe selects the 12.5 export layout when that firmware option
++is enabled. Feed-patched peer records are 196 bytes without that define and
++212 bytes with it, so the ath11k consumer can read later rows at the wrong
++offset. Firmware selection also needs to participate in package rebuild
++dependencies rather than leaving a previously compiled layout cached.
++
++The change gates `NSS_FIRMWARE_VERSION_12_5` on the selected firmware and ath11k
++NSS support, and tracks both firmware options used by the recipe. It does not
++hardcode 12.5 for every NSS device or enable the define for a non-NSS build.
++
++```sh
++python3 package/kernel/mac80211/tests/test-nss-layout.py \
++  --driver-header /path/to/nss-drv/exports/nss_wifili_if.h \
++  --driver-package /path/to/nss-packages/qca-nss-drv
++```
++
++Use driver source `d5ee67bd84d1ee7ed81eb6758e62a6db5a0cf4c7` from
++[CodeLinaro-mirror/qsdk_oss_lklm_nss-drv](https://github.com/CodeLinaro-mirror/qsdk_oss_lklm_nss-drv/tree/d5ee67bd84d1ee7ed81eb6758e62a6db5a0cf4c7)
++and feed `0d970dbf0185e3f53709bd803e8a466598023c57` from
++[qosmio/nss-packages](https://github.com/qosmio/nss-packages/tree/0d970dbf0185e3f53709bd803e8a466598023c57).
++The whole export blob and every relevant header patch are hash-pinned. Three
++header patch sections apply in recipe order with fuzz=0; the complete seven
++statistics declarations, including their 12.5 field guards, are copied verbatim.
++
++GNU make evaluates the actual mac80211 and driver recipes in a temporary
++metadata fixture; only framework includes are empty. It reads their real
++defines and dependency lists, without reimplementing the selection condition.
++The two binaries compile with those actual recipe defines. The producer writes
++two synthetic source-interface rows; the consumer executes the complete actual
++ath11k callback reconstructed from its patch series. Kernel synchronization,
++peer lookup and destination counters remain fixtures.
++
++Under the original recipe, the 12.5 producer writes 212-byte rows while the
++consumer expects 196: peer packet counts become `10/0` instead of `10/20`.
++The fixed recipe passes the same serialization/callback test for unset, 12.1,
++12.2 and 12.5 source branches. Additional flag/dependency checks preserve the
++11.4 selection and ensure disabled ath11k NSS cannot enable the 12.5 define.
++The test does **not** claim actual 11.4/12.1/12.2 firmware compatibility.
++
++`--mac-recipe` can point to an exact baseline Makefile for the negative test.
++`--sanitize`, `--cc` and `--runner` support native ASan/UBSan and cross execution.
++Normal/cross builds use -O2; sanitizer uses -O0 because the unrelated existing
++zero-radio lookup branch produces a maybe-uninitialized diagnostic under
++optimized instrumentation. The fixture supplies one valid radio. That path
++is not repaired or declared safe here; sign-compare follows kernel policy.
++
++The producer is a **host header model**, never captured or synthesized firmware
++evidence. This regression establishes recipe/export/consumer source consistency
++and rebuild metadata, not a complete SDK/Kbuild/module build, packet transport
++length checks, runtime firmware ABI, hardware behavior or network performance.
++It neither modifies a router nor imports private flow samples.
+diff --git a/package/kernel/mac80211/tests/README-offload-host-queue.md b/package/kernel/mac80211/tests/README-offload-host-queue.md
+new file mode 100644
+index 0000000..c7f4954
+--- /dev/null
++++ b/package/kernel/mac80211/tests/README-offload-host-queue.md
+@@ -0,0 +1,22 @@
++`test-offload-host-queue.py --archive /path/backports-VERSION.tar.zst` verifies
++the archive against the current recipe hash, applies the complete patch recipe
++with fuzz=0, extracts the actual `ieee80211_8023_xmit()` implementation, and
++compiles/runs it with bounded kernel and classifier fixtures. It requires
++Python 3, tar, zstd, patch and a C compiler; no root or hardware is needed.
++
++The 160 checks cover all HAS_TX_QUEUE / SUPPORTS_NSS_OFFLOAD combinations and
++CPU queue mappings 0–7. Software classification still selects its AC; the
++hardware-owned path uses a safe BE host queue while retaining its original
++netdev queue mapping and full skb priority. Station accounting stays in bounds.
++The queue mapping must not be reused as an AC index on the offloaded path.
++
++`--without-fix` omits this patch and must fail the strict compiler build with
++an uninitialized-queue diagnostic. `--sanitize` enables ASan/UBSan. `--cc` and
++`--runner` allow cross-execution. `--source` instead accepts a fully prepared
++tree including this fix; `--without-fix` reverses only this patch in a temporary
++copy before extraction.
++
++The function is actually extracted rather than mirrored. Synchronization,
++packet handling and classification callbacks are fixtures. This is not a
++complete kernel module build, firmware TID/AC test or packet-loss/performance
++measurement, and no production interface or router is touched.
+diff --git a/package/kernel/mac80211/tests/README.md b/package/kernel/mac80211/tests/README.md
+new file mode 100644
+index 0000000..ab0ffc7
+--- /dev/null
++++ b/package/kernel/mac80211/tests/README.md
+@@ -0,0 +1,54 @@
++`python3 package/kernel/mac80211/tests/test-nss-peer-stats.py` reconstructs the
++complete actual `nss.c` from its NSS patch sections in recipe order, extracts the
++real peer statistics function, and compiles/runs it against bounded kernel I/O,
++peer lookup and wire-structure fixtures. No root or target device is needed.
++
++The regression uses two peers with 2 and 5 drop counts: the original function
++incorrectly gives the second peer 7. Other cases exercise reversed order,
++repeated notifications, all bins for 32 peers, skipped peers, ext-vdev accounting,
++statistics disabled, zero drops and existing u32 counter wrap behavior.
++
++`--without-fix` excludes the per-peer reset patch and must fail the second-peer
++case. `--sanitize` enables ASan/UBSan. `--cc` and `--runner` support cross-built
++execution. Both default and NSS_FIRMWARE_VERSION_12_5 preprocessing modes run;
++the wire structs are fixtures, so this is not firmware layout/ABI validation.
++
++The source function is actually extracted, not reimplemented in the test.
++This does not compile a complete kernel module, load a driver, change hardware
++or establish any packet-loss/performance improvement.
++
++The sanitizer build uses -O0; ordinary and cross builds use -O2. The fixture
++provides one valid radio. The existing source's zero-radio peer-lookup path is
++outside this counter regression and is not claimed to be safe by these tests.
++
++For the actual 12.5 driver statistics declarations, pass `--driver-header` with
++`exports/nss_wifili_if.h` from the feed's pinned driver commit
++`d5ee67bd84d1ee7ed81eb6758e62a6db5a0cf4c7`. Also supply `--driver-patches`
++pointing to `qca-nss-drv/patches` from nss-packages commit
++`0d970dbf0185e3f53709bd803e8a466598023c57`. An accessible source mirror is
++[CodeLinaro-mirror/qsdk_oss_lklm_nss-drv](https://github.com/CodeLinaro-mirror/qsdk_oss_lklm_nss-drv/tree/d5ee67bd84d1ee7ed81eb6758e62a6db5a0cf4c7).
++The runner validates the whole header's Git blob SHA and all three relevant
++feed patch hashes, applies their header sections in recipe order without fuzz,
++then copies seven complete statistics declarations and their two constants
++verbatim. This includes the feed's conditional 12.2/12.5 field guards. A missing
++or altered header patch fails closed. It does not substitute a hand-written
++incoming wire layout in that mode.
++
++```sh
++python3 package/kernel/mac80211/tests/test-nss-peer-stats.py \
++  --driver-header /path/to/nss-drv/exports/nss_wifili_if.h \
++  --driver-patches /path/to/nss-packages/qca-nss-drv/patches
++```
++
++The actual header has **7** release-reason bins and a trailing `wpcs[1]`,
++where the simplified fixture has four bins and a fixed array. The harness
++allocates enough payload for 32 real rows without changing that declaration.
++The 42 checks include the final real bin and isolation from its adjacent NAWDS
++counter, alongside the existing per-peer cases. Native, sanitizer and cross
++execution use identical declarations. Only sign-compare is suppressed in this
++mode, matching kernel build policy for the callback's signed loop/u32 count.
++
++The destination peer data, lookup and synchronization remain fixtures; only
++the incoming declarations are source-exact. Both preprocessor paths use the
++same feed-patched 12.5 source export, so this does not establish 11.4 layout compatibility, full
++module compilation, transport length validation or actual firmware ABI behavior.
+diff --git a/package/kernel/mac80211/tests/nss-init.c b/package/kernel/mac80211/tests/nss-init.c
+new file mode 100644
+index 0000000..3723610
+--- /dev/null
++++ b/package/kernel/mac80211/tests/nss-init.c
+@@ -0,0 +1,303 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Complete source functions are inserted at the markers. Kernel/ring/message
++ * types and operations are fixtures; this is a registration-lifetime test. */
++#include <assert.h>
++#include <errno.h>
++#include <stdbool.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++typedef uint32_t u32;
++typedef int nss_tx_status_t;
++typedef void (*nss_wifili_callback_t)(void);
++typedef void (*nss_wifili_msg_callback_t)(void);
++#define NSS_WIFILI_INTERNAL_INTERFACE 203
++#define NSS_WIFILI_EXTERNAL_INTERFACE0 204
++#define NSS_WIFILI_EXTERNAL_INTERFACE1 205
++#define NSS_MAX_NET_INTERFACES 256
++#define NSS_STATE_INITIALIZED 1
++#define NSS_TX_SUCCESS 0
++#define ATH11K_WIFILI_TARGET_TYPE_UNKNOWN 0
++#define ATH11K_NSS_MSG_ACK 1
++#define ATH11K_NSS_MSG_TIMEOUT_MS 6000
++#define NSS_WIFILI_INIT_MSG 1
++#define DP_RXDMA_NSS_REFILL_RING_SIZE 32
++#define HAL_SRNG_RING_ID_LMAC1_ID_START 0
++#define DP_TCL_NUM_RING_MAX 4
++#define DP_REO_DST_RING_MAX 4
++#define WIFILI_MULTISOC_THREAD_MAP_ENABLE 1
++#define GFP_ATOMIC 0
++#define ENOTSUPP EOPNOTSUPP
++#define ATH11K_DBG_NSS 0
++#define nss_assert assert
++#define nss_info(...) ((void)0)
++#define EXPORT_SYMBOL(name)
++#define ath11k_info(...) ((void)0)
++#define ath11k_warn(...) ((void)0)
++#define ath11k_dbg(...) ((void)0)
++#define ath11k_err(...) ((void)0)
++struct net_device {
++	int unused;
++};
++struct device {
++	void *of_node;
++};
++struct nss_ctx_instance {
++	int state;
++};
++static struct {
++	struct nss_ctx_instance nss[1];
++	unsigned wifi_handler_id;
++	nss_wifili_msg_callback_t wifili_msg_callback;
++} nss_top_main;
++struct ring {
++	struct {
++		void *ring_id;
++	} tcl_data_ring, tcl_comp_ring;
++	void *ring_id;
++};
++struct ath11k_dp {
++	struct ring tx_ring[4], reo_dst_ring[4], reo_reinject_ring, rx_rel_ring, reo_except_ring;
++};
++struct ath11k_base {
++	struct device *dev;
++	struct ath11k_dp dp;
++	uintptr_t mem_pa;
++	int userpd_id;
++	struct {
++		unsigned hal_desc_sz;
++	} hw_params;
++	struct {
++		struct {
++			uintptr_t paddr;
++		} rdp, wrp;
++	} hal;
++	struct {
++		unsigned if_num;
++		int complete, response;
++		struct nss_ctx_instance *ctx;
++	} nss;
++};
++/* These minimal message shapes support control-flow execution only. */
++struct nss_wifili_init_msg {
++	unsigned target_type, flags, num_tcl_data_rings, num_reo_dest_rings;
++	struct {
++		unsigned tlv_size, rx_buf_len;
++	} wrip;
++	struct {
++		u32 dev_base_addr, shadow_rdptr_mem_addr, shadow_wrptr_mem_addr,
++		    lmac_rings_start_id;
++	} hssm;
++	int tcl_ring_info[4], tx_comp_ring[4], reo_dest_ring[4], reo_reinject_ring, rx_rel_ring,
++	    reo_exception_ring;
++};
++struct nss_wifili_msg {
++	int cm;
++	union {
++		struct nss_wifili_init_msg init;
++	} msg;
++};
++enum fault {
++	NONE,
++	UNKNOWN_TARGET,
++	ALLOC,
++	DESCRIPTORS,
++	INVALID_IF,
++	UNREADY,
++	SEND,
++	TIMEOUT,
++	NACK,
++	FAULTS
++};
++static enum fault fault;
++static unsigned interface_number, registrations, unregistrations, releases, live_messages;
++static bool live_descriptors, priority;
++static struct net_device *registered;
++static unsigned checks, scenarios;
++static const char *names[] = {
++    "success",	       "target", "allocation", "descriptors", "invalid interface",
++    "unready context", "send",	 "timeout",    "NACK"};
++static void check(bool ok, const char *label)
++{
++	checks++;
++	if (!ok) {
++		fprintf(stderr, "FAIL %s: %s\n", names[fault], label);
++		abort();
++	}
++}
++static void nss_core_register_subsys_dp(struct nss_ctx_instance *ctx, unsigned ifnum,
++					nss_wifili_callback_t a, nss_wifili_callback_t b,
++					void *unused, struct net_device *dev, unsigned features)
++{
++	(void)ctx;
++	(void)ifnum;
++	(void)a;
++	(void)b;
++	(void)unused;
++	(void)features;
++	check(!registered, "duplicate live registration");
++	registered = dev;
++	registrations++;
++}
++static void nss_core_unregister_subsys_dp(struct nss_ctx_instance *ctx, unsigned ifnum)
++{
++	(void)ctx;
++	(void)ifnum;
++	check(registered != NULL, "unregister without registration");
++	registered = NULL;
++	unregistrations++;
++}
++static void nss_wifili_release_external_if(unsigned ifnum)
++{
++	(void)ifnum;
++	releases++;
++}
++/* DRIVER_FUNCTIONS */
++static unsigned ath11k_nss_get_target_type(struct ath11k_base *ab)
++{
++	(void)ab;
++	return fault == UNKNOWN_TARGET ? 0 : 1;
++}
++static void *kzalloc(size_t size, int flags)
++{
++	(void)flags;
++	if (fault == ALLOC)
++		return NULL;
++	void *p = calloc(1, size);
++	assert(p);
++	live_messages++;
++	return p;
++}
++static void kfree(void *p)
++{
++	if (p) {
++		check(live_messages == 1, "message lifetime");
++		live_messages--;
++		free(p);
++	}
++}
++static bool of_property_read_bool(void *node, const char *name)
++{
++	(void)node;
++	(void)name;
++	return priority;
++}
++static void ath11k_nss_fill_srng_info(struct ath11k_base *ab, void *ring, int *info)
++{
++	(void)ab;
++	(void)ring;
++	*info = 7;
++}
++static int ath11k_nss_fill_tx_desc_info(struct ath11k_base *ab, struct nss_wifili_init_msg *msg)
++{
++	(void)ab;
++	(void)msg;
++	live_descriptors = true;
++	return fault == DESCRIPTORS ? -ENOMEM : 0;
++}
++static void ath11k_nss_tx_desc_mem_free(struct ath11k_base *ab)
++{
++	(void)ab;
++	live_descriptors = false;
++}
++static unsigned ath11k_nss_get_interface_type(struct ath11k_base *ab)
++{
++	(void)ab;
++	return fault == INVALID_IF ? NSS_MAX_NET_INTERFACES : interface_number;
++}
++static void ath11k_nss_wifili_ext_callback_wrapper(void)
++{
++}
++static void ath11k_nss_wifili_event_receive(void)
++{
++}
++static int nss_cmn_get_state(struct nss_ctx_instance *ctx)
++{
++	return ctx->state;
++}
++static void nss_cmn_msg_init(int *cm, unsigned ifnum, int type, size_t size,
++			     nss_wifili_msg_callback_t callback, void *app)
++{
++	(void)app;
++	check(ifnum == interface_number && type == NSS_WIFILI_INIT_MSG &&
++		  size == sizeof(struct nss_wifili_init_msg) && callback != NULL,
++	      "init message contract");
++	*cm = 1;
++}
++static void reinit_completion(int *complete)
++{
++	*complete = 0;
++}
++static nss_tx_status_t nss_wifili_tx_msg(struct nss_ctx_instance *ctx, struct nss_wifili_msg *msg)
++{
++	check(ctx == &nss_top_main.nss[0] && registered != NULL,
++	      "send requires registered context");
++	check(msg->msg.init.flags == (priority ? WIFILI_MULTISOC_THREAD_MAP_ENABLE : 0),
++	      "radio priority flag");
++	if (fault == NACK)
++		((struct ath11k_base *)registered)->nss.response = 0;
++	return fault == SEND ? -1 : 0;
++}
++static unsigned msecs_to_jiffies(unsigned ms)
++{
++	return ms;
++}
++static int wait_for_completion_timeout(int *complete, unsigned ticks)
++{
++	(void)complete;
++	check(ticks == 6000, "bounded completion timeout requested");
++	return fault == TIMEOUT ? 0 : 1;
++}
++#ifdef CPTCFG_ATH11K_NSS_MESH_SUPPORT
++static void ath11k_debugfs_nss_soc_create(struct ath11k_base *ab)
++{
++	(void)ab;
++}
++static int ath11k_nss_mesh_capability(struct ath11k_base *ab)
++{
++	(void)ab;
++	return 0;
++}
++#endif
++/* INIT_FUNCTION */
++int main(void)
++{
++	for (interface_number = 203; interface_number <= 205; interface_number++) {
++		for (fault = NONE; fault < FAULTS; fault++) {
++			struct device dev = {0};
++			struct ath11k_base ab = {.dev = &dev};
++			nss_top_main.nss[0].state = fault == UNREADY ? 0 : NSS_STATE_INITIALIZED;
++			registered = NULL;
++			registrations = unregistrations = releases = live_messages = 0;
++			live_descriptors = false;
++			priority = (interface_number % 2) == 0;
++			int ret = ath11k_nss_init(&ab);
++			scenarios++;
++			if (fault == NONE) {
++				check(ret == 0 && registered == (struct net_device *)&ab,
++				      "success retains owned registration");
++				check(registrations == 1 && unregistrations == 0 &&
++					  live_descriptors,
++				      "success resources remain available");
++				check(ab.nss.ctx == &nss_top_main.nss[0],
++				      "success context published");
++				nss_unregister_wifili_if(ab.nss.if_num);
++				ath11k_nss_tx_desc_mem_free(&ab);
++			} else {
++				int expected = fault == UNKNOWN_TARGET ? -ENOTSUPP
++					       : fault == ALLOC	       ? -ENOMEM
++								       : -EINVAL;
++				check(ret == expected, "original error status preserved");
++				check(registered == NULL, "registration survived failed init");
++				check(!live_descriptors,
++				      "descriptor resources survived failed init");
++			}
++			check(registrations == unregistrations && releases == unregistrations,
++			      "exactly one unregister per registration");
++			check(live_messages == 0, "message released on every outcome");
++		}
++	}
++	printf("Actual init/register lifecycle: %u scenarios, %u checks passed\n", scenarios,
++	       checks);
++	return 0;
++}
+diff --git a/package/kernel/mac80211/tests/nss-layout-consumer.c b/package/kernel/mac80211/tests/nss-layout-consumer.c
+new file mode 100644
+index 0000000..1dae7d2
+--- /dev/null
++++ b/package/kernel/mac80211/tests/nss-layout-consumer.c
+@@ -0,0 +1,89 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Real callback and source-exact incoming types; kernel/destination fixtures. */
++#include <assert.h>
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++typedef uint64_t u64;
++typedef uint32_t u32;
++#define ATH11K_DBG_NSS 0
++#define ath11k_dbg(...) ((void)0)
++#define rcu_read_lock() ((void)0)
++#define rcu_read_unlock() ((void)0)
++#define spin_lock_bh(p) ((void)(p))
++#define spin_unlock_bh(p) ((void)(p))
++#define ATH11K_NSS_TXRX_NETDEV_STATS(direction, dev, bytes, packets) ((void)(dev))
++static u64 jiffies = 1234;
++struct peer_stats {
++	u32 tx_packets, tx_bytes, tx_retries, tx_failed, rx_packets, rx_bytes, rx_dropped;
++	u32 tx_amsdu, tx_non_amsdu, tx_ofdma, tx_failed_retries, tx_multiple_retries;
++	u32 tx_mpdu_retries, tx_mpdu_total_retries, rx_amsdu, rx_non_amsdu, rx_retries;
++	u32 rx_intra_bss, rx_intra_bss_fail, rx_mic_err, rx_decrypt_err;
++	u64 last_ack, last_rx;
++};
++#include "driver-types.h"
++struct ath11k_peer {
++	void *sta, *vif;
++	struct {
++		struct peer_stats *nss_stats;
++		bool ext_vdev_up;
++		void *ext_vif;
++	} nss;
++};
++struct ath11k {
++	int radio;
++};
++struct ath11k_pdev {
++	struct ath11k *ar;
++};
++static struct ath11k radio;
++struct ath11k_base {
++	struct {
++		bool stats_enabled;
++	} nss;
++	int base_lock;
++	int num_radios;
++	struct ath11k_pdev pdevs[1];
++};
++static struct ath11k_peer peers[32];
++static struct peer_stats totals[32];
++static struct ath11k_peer *ath11k_peer_find_by_id(struct ath11k *ar, int id)
++{
++	(void)ar;
++	return id >= 0 && id < 32 ? &peers[id] : NULL;
++}
++/* SOURCE_FUNCTION */
++int main(int argc, char **argv)
++{
++	assert(argc == 2);
++	FILE *f = fopen(argv[1], "rb");
++	assert(f);
++	unsigned char *bytes = calloc(1, 65536);
++	assert(bytes);
++	size_t length = fread(bytes, 1, 65536, f);
++	assert(!ferror(f) && feof(f));
++	fclose(f);
++	struct nss_wifili_peer_stats *msg = (void *)bytes;
++	assert(length >= offsetof(struct nss_wifili_peer_stats, wpcs) + 2 * sizeof(msg->wpcs[0]));
++	assert(msg->npeers == 2);
++	struct ath11k_base ab = {
++	    .nss = {.stats_enabled = true}, .num_radios = 1, .pdevs = {{.ar = &radio}}};
++	memset(totals, 0, sizeof(totals));
++	for (int i = 0; i < 32; i++) {
++		peers[i].sta = (void *)1;
++		peers[i].nss.nss_stats = &totals[i];
++	}
++	ath11k_nss_get_peer_stats(&ab, msg);
++	printf("Consumer record=%zu, packets=%u/%u\n", sizeof(msg->wpcs[0]), totals[0].tx_packets,
++	       totals[1].tx_packets);
++	if (totals[0].tx_packets != 10 || totals[1].tx_packets != 20) {
++		fprintf(stderr, "FAIL second peer row decoded with wrong layout\n");
++		free(bytes);
++		return 1;
++	}
++	free(bytes);
++	return 0;
++}
+diff --git a/package/kernel/mac80211/tests/nss-layout-producer.c b/package/kernel/mac80211/tests/nss-layout-producer.c
+new file mode 100644
+index 0000000..1601e41
+--- /dev/null
++++ b/package/kernel/mac80211/tests/nss-layout-producer.c
+@@ -0,0 +1,30 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* A source-interface serialization model; never firmware output. */
++#include "driver-types.h"
++#include <assert.h>
++#include <stddef.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++int main(int argc, char **argv)
++{
++	assert(argc == 2);
++	size_t length = offsetof(struct nss_wifili_peer_stats, wpcs) +
++			2 * sizeof(struct nss_wifili_peer_ctrl_stats);
++	struct nss_wifili_peer_stats *msg = calloc(1, length);
++	assert(msg);
++	msg->npeers = 2;
++	msg->wpcs[0].peer_id = 0;
++	msg->wpcs[1].peer_id = 1;
++	msg->wpcs[0].tx.tx_ucast_cnt = 10;
++	msg->wpcs[1].tx.tx_ucast_cnt = 20;
++	/* A 196-byte consumer mistakes this first-row retry field for peer 2's ID. */
++	msg->wpcs[0].retry.tx_multiple_retry_count = 99;
++	FILE *f = fopen(argv[1], "wb");
++	assert(f);
++	assert(fwrite(msg, 1, length, f) == length);
++	assert(fclose(f) == 0);
++	printf("Producer record=%zu, payload=%zu\n", sizeof(msg->wpcs[0]), length);
++	free(msg);
++	return 0;
++}
+diff --git a/package/kernel/mac80211/tests/nss-peer-stats.c b/package/kernel/mac80211/tests/nss-peer-stats.c
+new file mode 100644
+index 0000000..04de6c4
+--- /dev/null
++++ b/package/kernel/mac80211/tests/nss-peer-stats.c
+@@ -0,0 +1,98 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* The runner inserts the complete real source function at SOURCE_FUNCTION.
++ * Kernel synchronization/peer lookup are fixtures. Optional driver-types.h
++ * copies exact pinned incoming statistics declarations, not firmware readback.
++ * This is not a full module build or firmware ABI test. */
++#include <assert.h>
++#include <stdint.h>
++#include <stdbool.h>
++#include <stdio.h>
++#include <string.h>
++#include <stdlib.h>
++#include <stddef.h>
++typedef uint64_t u64;
++typedef uint32_t u32;
++#define ATH11K_DBG_NSS 0
++#define ath11k_dbg(...) ((void)0)
++#define rcu_read_lock() ((void)0)
++#define rcu_read_unlock() ((void)0)
++#define spin_lock_bh(p) ((void)(p))
++#define spin_unlock_bh(p) ((void)(p))
++#define ATH11K_NSS_TXRX_NETDEV_STATS(direction, dev, bytes, packets) ((void)(dev))
++static u64 jiffies=1234;
++struct peer_stats {
++ u32 tx_packets,tx_bytes,tx_retries,tx_failed,rx_packets,rx_bytes,rx_dropped;
++ u32 tx_amsdu,tx_non_amsdu,tx_ofdma,tx_failed_retries,tx_multiple_retries;
++ u32 tx_mpdu_retries,tx_mpdu_total_retries,rx_amsdu,rx_non_amsdu,rx_retries;
++ u32 rx_intra_bss,rx_intra_bss_fail,rx_mic_err,rx_decrypt_err;
++ u64 last_ack,last_rx;
++};
++#ifdef REAL_NSS_STATS_TYPES
++#include "driver-types.h"
++#else
++#define NSS_WIFILI_TQM_RR_MAX 4
++struct nss_wifili_peer_ctrl_stats {
++ int peer_id;
++ struct { u32 tx_success_cnt,tx_mcast_cnt,tx_ucast_cnt,tx_bcast_cnt;
++  u32 tx_mcast_bytes,tx_ucast_bytes,tx_bcast_bytes,retries,amsdu_cnt,non_amsdu_cnt,ofdma;
++  struct {u32 drop_stats[NSS_WIFILI_TQM_RR_MAX];} dropped;
++ } tx;
++ struct {u32 rx_recvd,rx_recvd_bytes,amsdu_cnt,non_amsdu_cnt,rx_intra_bss_pkts_num,rx_intra_bss_fail_num;
++  struct{u32 mic_err,decrypt_err;}err;
++ }rx;
++ struct{u32 tx_failed_retry_count,tx_multiple_retry_count,tx_mpdu_retry_count,tx_mpdu_total_retry_count,rx_retry_count;}retry;
++};
++struct nss_wifili_peer_stats{int npeers;struct nss_wifili_peer_ctrl_stats wpcs[32];};
++#endif
++struct ath11k_peer{void *sta,*vif;struct{struct peer_stats *nss_stats;bool ext_vdev_up;void *ext_vif;}nss;};
++struct ath11k { int radio; };
++struct ath11k_pdev { struct ath11k *ar; };
++static struct ath11k radio;
++struct ath11k_base{struct{bool stats_enabled;}nss;int base_lock;int num_radios;struct ath11k_pdev pdevs[1];};
++static struct ath11k_peer peers[32];static struct peer_stats totals[32];
++static struct ath11k_peer *ath11k_peer_find_by_id(struct ath11k *ar,int id){(void)ar;return id>=0&&id<32?&peers[id]:NULL;}
++/* SOURCE_FUNCTION */
++static unsigned checks=0;
++static void check(bool ok,const char *label){checks++;if(!ok){fprintf(stderr,"FAIL %s\n",label);assert(ok);}}
++static void setup(void){memset(totals,0,sizeof(totals));memset(peers,0,sizeof(peers));for(int i=0;i<32;i++){peers[i].sta=(void*)1;peers[i].nss.nss_stats=&totals[i];}}
++static u32 bin_total(unsigned peer){return NSS_WIFILI_TQM_RR_MAX*peer+NSS_WIFILI_TQM_RR_MAX*(NSS_WIFILI_TQM_RR_MAX-1)/2;}
++int main(void){
++ struct ath11k_base ab={.nss={.stats_enabled=true},.num_radios=1,.pdevs={{.ar=&radio}}};
++ /* The real driver declares a trailing wpcs[1]; allocate the actual message
++  * payload for 32 rows rather than replacing that declaration in the test. */
++ size_t message_bytes=offsetof(struct nss_wifili_peer_stats,wpcs)+32*sizeof(struct nss_wifili_peer_ctrl_stats);
++ struct nss_wifili_peer_stats *msg=calloc(1,message_bytes);assert(msg);msg->npeers=2;setup();
++ for(int i=0;i<2;i++){msg->wpcs[i].peer_id=i;msg->wpcs[i].tx.tx_ucast_cnt=10;msg->wpcs[i].tx.tx_ucast_bytes=1000;}
++ msg->wpcs[0].tx.dropped.drop_stats[0]=2;msg->wpcs[1].tx.dropped.drop_stats[0]=5;
++ ath11k_nss_get_peer_stats(&ab,msg);
++ check(totals[0].tx_failed==2,"first peer drop total");
++ check(totals[1].tx_failed==5,"second peer receives only its own drops");
++ check(totals[0].tx_bytes==1000&&totals[1].tx_packets==10,"other counters preserved");
++ ath11k_nss_get_peer_stats(&ab,msg);check(totals[0].tx_failed==4&&totals[1].tx_failed==10,"repeated message");
++ setup();struct nss_wifili_peer_ctrl_stats swap=msg->wpcs[0];msg->wpcs[0]=msg->wpcs[1];msg->wpcs[1]=swap;
++ ath11k_nss_get_peer_stats(&ab,msg);check(totals[0].tx_failed==2&&totals[1].tx_failed==5,"order independence");
++ setup();memset(msg,0,message_bytes);msg->npeers=32;
++ for(int i=0;i<32;i++){msg->wpcs[i].peer_id=i;for(int j=0;j<NSS_WIFILI_TQM_RR_MAX;j++)msg->wpcs[i].tx.dropped.drop_stats[j]=i+j;}
++ ath11k_nss_get_peer_stats(&ab,msg);
++ for(int i=0;i<32;i++)check(totals[i].tx_failed==bin_total(i),"32 peers, all drop bins");
++ setup();msg->wpcs[3].peer_id=99;peers[5].sta=NULL;peers[7].nss.ext_vdev_up=true;
++ ath11k_nss_get_peer_stats(&ab,msg);
++ check(totals[3].tx_failed==0&&totals[5].tx_failed==0,"missing and unassociated peer skipped");
++ check(totals[4].tx_failed==bin_total(4)&&totals[6].tx_failed==bin_total(6)&&totals[7].tx_failed==bin_total(7),"skip and ext-vdev isolation");
++ setup();ab.nss.stats_enabled=false;ath11k_nss_get_peer_stats(&ab,msg);check(totals[1].tx_failed==0,"statistics disabled");ab.nss.stats_enabled=true;
++ memset(msg,0,message_bytes);msg->npeers=2;msg->wpcs[0].peer_id=0;msg->wpcs[1].peer_id=1;
++ msg->wpcs[0].tx.dropped.drop_stats[0]=7;totals[0].tx_failed=UINT32_MAX-2;
++ ath11k_nss_get_peer_stats(&ab,msg);check(totals[0].tx_failed==4&&totals[1].tx_failed==0,"existing wrap semantics and zero peer");
++#ifdef REAL_NSS_STATS_TYPES
++ /* Isolate the last real release-reason bin and its adjacent NAWDS field. */
++ setup();memset(msg,0,message_bytes);msg->npeers=2;
++ msg->wpcs[0].peer_id=0;msg->wpcs[1].peer_id=1;
++ msg->wpcs[0].tx.dropped.drop_stats[NSS_WIFILI_TQM_RR_MAX-1]=2;
++ msg->wpcs[1].tx.dropped.drop_stats[NSS_WIFILI_TQM_RR_MAX-1]=5;
++ msg->wpcs[0].tx.dropped.tx_nawds_mcast_drop_cnt=100;
++ msg->wpcs[1].tx.dropped.tx_nawds_mcast_drop_cnt=200;
++ ath11k_nss_get_peer_stats(&ab,msg);
++ check(totals[0].tx_failed==2&&totals[1].tx_failed==5,"last driver bin and adjacent field isolation");
++#endif
++ free(msg);printf("Drop bins: %u; actual complete peer statistics function assertions passed: %u\n",(unsigned)NSS_WIFILI_TQM_RR_MAX,checks);return 0;
++}
+diff --git a/package/kernel/mac80211/tests/nss_driver_export.py b/package/kernel/mac80211/tests/nss_driver_export.py
+new file mode 100644
+index 0000000..126c881
+--- /dev/null
++++ b/package/kernel/mac80211/tests/nss_driver_export.py
+@@ -0,0 +1,60 @@
++# SPDX-License-Identifier: GPL-2.0-only
++"""Pinned source export declarations for NSS layout regressions."""
++import hashlib
++import pathlib
++import re
++import subprocess
++import tempfile
++
++DRIVER_BLOB = '6a7396bf3a49c1db7bd4412dd181a96f8474757e'
++DRIVER_PATCHES = {
++    '0007-nss-drv-Fix-nss_wifili_if-compilation-error-GCC-13.patch':
++        '4d052625fa8f938b5982411f809f9e39fca018e5f9def5e94da9f6a877257e38',
++    '0017-nss-drv-wifili-add-exported-symbols.patch':
++        '75831dc3631339b144eef16287921227cc98d0a78981957b450da022a614f987',
++    '0022-nss-drv-limit-fw-12.2.patch':
++        '993297cf9aac475b0de6e1bef13f94e7bab6bbcdb0e31914b144f5c470186d7f',
++}
++
++
++def driver_types(path, patches):
++    data = path.read_bytes()
++    blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
++    if blob != DRIVER_BLOB:
++        raise ValueError('Driver header differs from pinned d5ee67bd84d1 export')
++    target = 'exports/nss_wifili_if.h'
++    with tempfile.TemporaryDirectory(prefix='nss-export-test-') as folder:
++        stage = pathlib.Path(folder)
++        header = stage / target
++        header.parent.mkdir()
++        header.write_bytes(data)
++        seen = set()
++        for patch in sorted(patches.glob('*.patch')):
++            raw = patch.read_bytes()
++            sections = re.split(r'(?=^--- (?:[ab]/|/dev/null))', raw.decode(), flags=re.M)
++            relevant = [s for s in sections if re.search(
++                r'^\+\+\+ b/' + re.escape(target) + r'(?:\s|$)', s, re.M)]
++            if not relevant:
++                continue
++            if hashlib.sha256(raw).hexdigest() != DRIVER_PATCHES.get(patch.name):
++                raise ValueError('Driver header patch differs from pinned feed: ' + patch.name)
++            subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-d', str(stage)],
++                           input=''.join(relevant), text=True, check=True,
++                           capture_output=True, timeout=10)
++            seen.add(patch.name)
++        if seen != set(DRIVER_PATCHES):
++            raise ValueError('Incomplete driver export patch series')
++        text = header.read_text()
++        print('Patched export SHA256:', hashlib.sha256(text.encode()).hexdigest())
++    # Copy complete declarations verbatim, including their nested type fields;
++    # unrelated kernel APIs from the rest of the header are not compiled.
++    names = ('tx_dropped', 'tx_ctrl_stats', 'rx_err', 'rx_ctrl_stats',
++             'retry_ctrl_stats', 'peer_ctrl_stats', 'peer_stats')
++    parts = [re.match(r'/\*.*?\*/', text, re.S).group(), '#include <stdint.h>']
++    for name in ('TQM_RR_MAX', 'MAX_RESERVED_TYPE'):
++        parts.append(re.search(r'^#define NSS_WIFILI_' + name + r'\s+\d+\s*$',
++                               text, re.M).group())
++    for name in names:
++        parts.append(re.search(r'^struct nss_wifili_' + name +
++                               r' \{.*?^\};', text, re.M | re.S).group())
++    return '\n\n'.join(parts) + '\n'
+diff --git a/package/kernel/mac80211/tests/offload-host-queue.c b/package/kernel/mac80211/tests/offload-host-queue.c
+new file mode 100644
+index 0000000..cafa45b
+--- /dev/null
++++ b/package/kernel/mac80211/tests/offload-host-queue.c
+@@ -0,0 +1,88 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Complete actual source function is inserted below. Kernel operations are
++ * fixtures; this checks host queue initialization, not firmware TID/AC. */
++#include <assert.h>
++#include <stdbool.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <string.h>
++typedef uint8_t u8;
++typedef uint16_t u16;
++typedef uint32_t u32;
++typedef uint64_t u64;
++struct ethhdr { unsigned char h_dest[6]; };
++static int atomic_read(const int *v) { return *v; }
++#define IEEE80211_AC_BE 2
++#define HAS_TX_QUEUE 1
++#define SUPPORTS_NSS_OFFLOAD 2
++#define NL80211_IFTYPE_AP_VLAN 5
++#define SCAN_SW_SCANNING 1
++#define SDATA_STATE_OFFCHANNEL 1
++#define HT_AGG_STATE_OPERATIONAL 1
++#define IEEE80211_QOS_CTL_TAG1D_MASK 7
++#define GFP_ATOMIC 0
++#define IEEE80211_TX_CTRL_MLO_LINK_UNSPEC 0
++#define IEEE80211_TX_CTL_HW_80211_ENCAP 4
++#define IEEE80211_TX_CTL_REQ_TX_STATUS 8
++#define unlikely(x) (x)
++#define rcu_dereference(x) (x)
++#define container_of(ptr, type, member) ((type *)(void *)(ptr))
++#define test_bit(bit, field) ((*(field) & (bit)) != 0)
++struct ieee80211_key { int conf; };
++struct ieee80211_tx_info {
++ unsigned flags, hw_queue, status_data, status_data_idr;
++ struct { void *vif, *hw_key; } control;
++};
++struct sk_buff { unsigned char data[6]; unsigned priority, queue_mapping, len; void *sk; struct ieee80211_tx_info info; };
++struct ieee80211_local { struct { unsigned flags; } hw; unsigned scanning; };
++struct ieee80211_sub_if_data {
++ struct ieee80211_local *local;
++ struct { unsigned type, hw_queue[4]; } vif;
++ unsigned state;
++ void *bss;
++ union { struct { int num_mcast_sta; } vlan; int ap; } u;
++};
++struct net_device { int unused; };
++struct tid_ampdu_tx { unsigned state, timeout, last_tx; };
++struct sta_info {
++ struct { struct tid_ampdu_tx *tid_tx[8]; } ampdu_mlme;
++ struct { struct { unsigned packets[4], bytes[4]; } tx_stats; } deflink;
++};
++static unsigned selected_ac, selected_calls, sent, checks;
++static const unsigned jiffies = 10;
++static bool ieee80211_hw_check(const void *hw, unsigned flag) { return (((const struct ieee80211_local *)hw)->hw.flags & flag) != 0; }
++static unsigned ieee80211_select_queue(struct ieee80211_sub_if_data *s, struct sta_info *st, struct sk_buff *skb) { (void)s;(void)st;(void)skb;selected_calls++;return selected_ac; }
++static void skb_set_queue_mapping(struct sk_buff *skb, unsigned q) { skb->queue_mapping=q; }
++static bool is_multicast_ether_addr(const void *p) { (void)p;return false; }
++static struct sk_buff *skb_share_check(struct sk_buff *skb, int f) { (void)f;return skb; }
++static void ieee80211_aggr_check(void *s, void *st, void *skb) { (void)s;(void)st;(void)skb; }
++static void __ieee80211_subif_start_xmit(void *skb, void *dev, int f, int link, void *cookie) { (void)skb;(void)dev;(void)f;(void)link;(void)cookie;assert(false); }
++static unsigned ieee80211_sdata_netdev_features(const void *s) { (void)s;return 0; }
++static struct sk_buff *ieee80211_tx_skb_fixup(struct sk_buff *skb, unsigned f, void *dev) { (void)f;(void)dev;return skb; }
++#define IEEE80211_SKB_CB(skb) (&(skb)->info)
++#define skb_list_walk_safe(skb, seg, next) for ((seg)=(skb),(next)=NULL;(seg);(seg)=(next))
++static bool sk_requests_wifi_status(const void *sk) { (void)sk;return false; }
++static unsigned ieee80211_store_ack_skb(void *s, void *skb, void *f, void *cookie) { (void)s;(void)skb;(void)f;(void)cookie;return 0; }
++static void dev_sw_netstats_tx_add(void *dev, unsigned n, unsigned len) { (void)dev;assert(n==1 && len==100); }
++static void ieee80211_tpt_led_trig_tx(void *s, unsigned len) { (void)s;(void)len; }
++static bool ieee80211_tx_8023(void *s, struct sk_buff *skb, void *st, bool pending) { (void)s;(void)st;(void)pending;assert(skb->info.hw_queue>=10 && skb->info.hw_queue<=13);sent++;return true; }
++static void kfree_skb(void *skb) { (void)skb;assert(false); }
++
++/* SOURCE_FUNCTION */
++
++int main(void) {
++ for (unsigned nss=0;nss<2;nss++) for (unsigned has=0;has<2;has++) for (unsigned cpu=0;cpu<8;cpu++) {
++  struct ieee80211_local local={.hw={.flags=(has?HAS_TX_QUEUE:0)|(nss?SUPPORTS_NSS_OFFLOAD:0)}};
++  struct ieee80211_sub_if_data s={.local=&local,.vif={.hw_queue={10,11,12,13}}};
++  struct sta_info sta={0};struct net_device dev={0};struct sk_buff skb={.queue_mapping=cpu,.priority=0x12340006,.len=100};
++  selected_ac=cpu%4;selected_calls=sent=0;
++  ieee80211_8023_xmit(&s,&dev,&sta,NULL,&skb,0,0,NULL);
++  unsigned expected=has?IEEE80211_AC_BE:selected_ac;
++  assert(skb.info.hw_queue==s.vif.hw_queue[expected]);checks++;
++  assert(selected_calls==(has?0:1) && sent==1);checks++;
++  assert(skb.priority==0x12340006);checks++;
++  assert(skb.queue_mapping==(has?cpu:selected_ac));checks++;
++  assert(sta.deflink.tx_stats.packets[expected]==(nss?0:1));checks++;
++ }
++ printf("Actual complete 8023 function assertions passed: %u\n",checks);
++}
+diff --git a/package/kernel/mac80211/tests/test-nss-init.py b/package/kernel/mac80211/tests/test-nss-init.py
+new file mode 100644
+index 0000000..db157ee
+--- /dev/null
++++ b/package/kernel/mac80211/tests/test-nss-init.py
+@@ -0,0 +1,115 @@
++#!/usr/bin/env python3
++# SPDX-License-Identifier: GPL-2.0-only
++"""Exercise complete ath11k NSS init and real driver registration functions.
++
++Only resource/control-flow contracts are tested; kernel I/O and message/ring
++types remain bounded fixtures. No module, timing or hardware claim is implied.
++"""
++import argparse
++import hashlib
++from pathlib import Path
++import re
++import resource
++import shlex
++import subprocess
++import tempfile
++
++TARGET = 'drivers/net/wireless/ath/ath11k/nss.c'
++FIX = '999-922-ath11k-nss-unregister-on-unready-context.patch'
++DRIVER_BLOB = '209f8cda545c4843131c0b3257d4710afe61e7ae'
++GROUPS = ['build', 'subsys', 'ath', 'ath5k', 'ath9k', 'ath10k', 'ath11k', 'ath12k',
++          'rt2x00', 'mt7601u', 'mwl', 'brcm', 'rtl', 'nss/subsys', 'nss/ath10k', 'nss/ath11k']
++
++
++def function(text, name):
++    # Each signature begins on one line; the driver register signature wraps.
++    match = re.search(r'^(?:static )?(?:struct \w+\s*\*\s*|(?:int|void)\s+)'
++                      + re.escape(name) + r'\(', text, re.M)
++    start = match.start()
++    brace = text.index('{', match.end())
++    level, end = 1, brace + 1
++    while level:
++        level += (text[end] == '{') - (text[end] == '}')
++        end += 1
++    return text[start:end]
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--driver-source', type=Path, required=True,
++                        help='d5ee67bd84d1 nss-drv/nss_wifili.c')
++    parser.add_argument('--without-fix', action='store_true')
++    parser.add_argument('--archive', type=Path,
++                        help='optionally apply the complete recipe to its matching backports archive')
++    parser.add_argument('--sanitize', action='store_true')
++    parser.add_argument('--cc', default='cc')
++    parser.add_argument('--runner', default='')
++    args = parser.parse_args()
++    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
++    raw = args.driver_source.read_bytes()
++    blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
++    if blob != DRIVER_BLOB:
++        raise ValueError('Driver source differs from pinned d5ee67bd84d1')
++    driver = raw.decode()
++    root = Path(__file__).resolve().parents[1]
++    fixture = (root / 'tests/nss-init.c').read_text()
++    with tempfile.TemporaryDirectory(prefix='ath11k-nss-init-') as folder:
++        stage = Path(folder)
++        source = stage / TARGET
++        applied = 0
++        if args.archive:
++            expected = re.search(r'^PKG_HASH:=(\w+)$', (root / 'Makefile').read_text(), re.M).group(1)
++            if hashlib.sha256(args.archive.read_bytes()).hexdigest() != expected:
++                raise ValueError('Backports archive checksum mismatch')
++            subprocess.run(['tar', '--zstd', '-xf', str(args.archive.resolve()),
++                            '-C', str(stage), '--strip-components=1', '--no-same-owner',
++                            '--no-same-permissions'], check=True, timeout=30)
++            for group in GROUPS:
++                for patch in sorted((root / 'patches' / group).glob('*.patch')):
++                    if args.without_fix and patch.name == FIX:
++                        continue
++                    subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-d', str(stage),
++                                    '-i', str(patch.resolve())], check=True,
++                                   capture_output=True, timeout=10)
++                    applied += 1
++            print('Applied complete recipe patches:', applied, flush=True)
++        else:
++            source.parent.mkdir(parents=True)
++            for patch in sorted((root / 'patches/nss/ath11k').glob('*.patch')):
++                if args.without_fix and patch.name == FIX:
++                    continue
++                sections = re.split(r'(?=^--- (?:[ab]/|/dev/null))', patch.read_text(), flags=re.M)
++                relevant = [s for s in sections if re.search(
++                    r'^\+\+\+ b/' + re.escape(TARGET) + r'(?:\s|$)', s, re.M)]
++                if relevant:
++                    subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-d', str(stage)],
++                                   input=''.join(relevant), text=True, capture_output=True,
++                                   check=True, timeout=10)
++                    applied += 1
++            print('Applied actual NSS source sections:', applied, flush=True)
++        init = function(source.read_text(), 'ath11k_nss_init')
++        bindings = '\n\n'.join(function(driver, name) for name in
++                               ('nss_register_wifili_if', 'nss_unregister_wifili_if'))
++        # Keep the upstream license with the copied functions in the temporary TU.
++        license = re.match(r'/\*.*?\*/', driver, re.S).group()
++        test = stage / 'test.c'
++        test.write_text(license + '\n' + fixture.replace('/* DRIVER_FUNCTIONS */', bindings)
++                        .replace('/* INIT_FUNCTION */', init))
++        print('Complete init SHA256:', hashlib.sha256(init.encode()).hexdigest(), flush=True)
++        print('Actual driver register/unregister SHA256:',
++              hashlib.sha256(bindings.encode()).hexdigest(), flush=True)
++        for mesh in (False, True):
++            output = stage / ('mesh' if mesh else 'normal')
++            cmd = shlex.split(args.cc) + ['-std=c11', '-O1' if args.sanitize else '-O2',
++                                         '-Wall', '-Wextra', '-Werror']
++            if mesh:
++                cmd.append('-DCPTCFG_ATH11K_NSS_MESH_SUPPORT')
++            if args.sanitize:
++                cmd += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
++            subprocess.run(cmd + [str(test), '-o', str(output)], check=True, timeout=30)
++            subprocess.run(shlex.split(args.runner) + [str(output)], check=True, timeout=10)
++    print('Real registration/init control flow; kernel/ring/message I/O fixtures only')
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/package/kernel/mac80211/tests/test-nss-layout.py b/package/kernel/mac80211/tests/test-nss-layout.py
+new file mode 100644
+index 0000000..64ef712
+--- /dev/null
++++ b/package/kernel/mac80211/tests/test-nss-layout.py
+@@ -0,0 +1,128 @@
++#!/usr/bin/env python3
++# SPDX-License-Identifier: GPL-2.0-only
++"""Compile a source-interface serialization model with actual recipe flags.
++
++The producer is a host header model, never NSS firmware output. The consumer
++executes the actual complete ath11k peer statistics callback against fixtures.
++"""
++import argparse
++import hashlib
++from pathlib import Path
++import re
++import shlex
++import subprocess
++import tempfile
++from nss_driver_export import driver_types
++
++TARGET = 'drivers/net/wireless/ath/ath11k/nss.c'
++VERSIONS = ('11_4', '12_1', '12_2', '12_5')
++
++
++def recipe_flags(recipe, cwd, stage, version, enabled=True):
++    # The recipe asks git for informational build metadata at TOPDIR. Supply
++    # an isolated fixture repository so those queries do not read host state.
++    if not (stage / '.git').exists():
++        subprocess.run(['git', 'init', '-q', str(stage)], check=True)
++        subprocess.run(['git', '-C', str(stage), '-c', 'user.name=Fixture',
++                        '-c', 'user.email=fixture@example.invalid', 'commit',
++                        '--allow-empty', '-qm', 'test metadata'], check=True)
++    include = stage / 'include'
++    include.mkdir(exist_ok=True)
++    for name in ('rules.mk', 'include/kernel.mk', 'include/package.mk'):
++        (stage / name).write_text('')
++    harness = stage / 'flags.mk'
++    harness.write_text(".PHONY: flagdump\nflagdump:\n\t@printf '%s\\n' "
++                       "'$(C_DEFINES)' '$(EXTRA_CFLAGS)' '$(PKG_CONFIG_DEPENDS)'\n")
++    config = {v: ('y' if v == version else '') for v in VERSIONS}
++    cmd = ['make', '-srR', '-f', str(recipe), '-f', str(harness), 'flagdump',
++           f'TOPDIR={stage}', f'INCLUDE_DIR={include}',
++           'IPQ_BRANCH=test', 'IPQ_DATE=test', 'IPQ_COMMIT=test',
++           'CONFIG_ATH11K_NSS_SUPPORT=' + ('y' if enabled else '')]
++    cmd += [f'CONFIG_NSS_FIRMWARE_VERSION_{v}={value}' for v, value in config.items()]
++    output = subprocess.check_output(cmd, cwd=cwd, text=True).splitlines()
++    assert len(output) == 3, output
++    return output
++
++
++def callback(root, stage):
++    source = stage / TARGET
++    source.parent.mkdir(parents=True)
++    for patch in sorted((root / 'patches/nss/ath11k').glob('*.patch')):
++        sections = re.split(r'(?=^--- (?:[ab]/|/dev/null))', patch.read_text(), flags=re.M)
++        relevant = [s for s in sections if re.search(
++            r'^\+\+\+ b/' + re.escape(TARGET) + r'(?:\s|$)', s, re.M)]
++        if relevant:
++            subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-d', str(stage)],
++                           input=''.join(relevant), text=True, capture_output=True,
++                           check=True, timeout=10)
++    text = source.read_text()
++    start = text.index('static void ath11k_nss_get_peer_stats(')
++    brace = text.index('{', start)
++    level, end = 1, brace + 1
++    while level:
++        level += (text[end] == '{') - (text[end] == '}')
++        end += 1
++    return text[start:end]
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--driver-header', type=Path, required=True)
++    parser.add_argument('--driver-package', type=Path, required=True,
++                        help='pinned nss-packages/qca-nss-drv directory')
++    parser.add_argument('--mac-recipe', type=Path, help='optional exact baseline Makefile')
++    parser.add_argument('--sanitize', action='store_true')
++    parser.add_argument('--cc', default='cc')
++    parser.add_argument('--runner', default='')
++    args = parser.parse_args()
++    root = Path(__file__).resolve().parents[1]
++    recipe = (args.mac_recipe or root / 'Makefile').resolve()
++    driver = args.driver_package.resolve()
++    provider_recipe = (driver / 'Makefile').read_bytes()
++    provider_blob = hashlib.sha1(b'blob ' + str(len(provider_recipe)).encode()
++                                + b'\0' + provider_recipe).hexdigest()
++    if provider_blob != '29a87fdedcc2badadb0c7956a36acafa3c599773':
++        raise ValueError('Driver recipe differs from pinned nss-packages 0d970dbf0185')
++    types = driver_types(args.driver_header, driver / 'patches')
++    with tempfile.TemporaryDirectory(prefix='nss-layout-test-') as folder:
++        stage = Path(folder)
++        (stage / 'driver-types.h').write_text(types)
++        function = callback(root, stage)
++        print('Actual callback SHA256:', hashlib.sha256(function.encode()).hexdigest(), flush=True)
++        consumer = stage / 'consumer.c'
++        consumer.write_text((root / 'tests/nss-layout-consumer.c').read_text()
++                            .replace('/* SOURCE_FUNCTION */', function))
++        compile_cmd = shlex.split(args.cc) + ['-std=c11', '-O0' if args.sanitize else '-O2', '-Wall', '-Wextra',
++                                             '-Werror', '-Wno-sign-compare', '-I', str(stage)]
++        if args.sanitize:
++            compile_cmd += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
++        for version in ('', '12_1', '12_2', '12_5'):
++            mac, _, dependencies = recipe_flags(recipe, root, stage, version)
++            _, provider, _ = recipe_flags(driver / 'Makefile', driver, stage, version)
++            producer = stage / 'producer'
++            reader = stage / 'consumer'
++            # Compile exactly the recipe's defines, omitting unrelated include
++            # paths, optimization and kernel-only warning flags.
++            provider_defines = [f for f in shlex.split(provider) if f.startswith('-D')]
++            subprocess.run(compile_cmd + provider_defines +
++                           [str(root / 'tests/nss-layout-producer.c'), '-o', str(producer)],
++                           check=True, timeout=30)
++            subprocess.run(compile_cmd + shlex.split(mac) +
++                           [str(consumer), '-o', str(reader)], check=True, timeout=30)
++            print('Firmware selection:', version or 'unset', 'consumer defines:', mac, flush=True)
++            data = stage / 'synthetic-message.bin'
++            subprocess.run(shlex.split(args.runner) + [str(producer), str(data)], check=True, timeout=10)
++            subprocess.run(shlex.split(args.runner) + [str(reader), str(data)], check=True, timeout=10)
++        legacy, _, legacy_dependencies = recipe_flags(recipe, root, stage, '11_4')
++        assert '-DCONFIG_NSS_FIRMWARE_VERSION_11_4' in legacy
++        assert '-DNSS_FIRMWARE_VERSION_12_5' not in legacy
++        assert 'CONFIG_NSS_FIRMWARE_VERSION_11_4' in legacy_dependencies.split()
++        disabled, _, _ = recipe_flags(recipe, root, stage, '12_5', enabled=False)
++        assert '-DNSS_FIRMWARE_VERSION_12_5' not in disabled
++        assert 'CONFIG_NSS_FIRMWARE_VERSION_12_5' in dependencies.split()
++    print('Actual recipe flags / source serialization / callback contract passed')
++    print('Host source-interface model, not firmware ABI or complete module validation')
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/package/kernel/mac80211/tests/test-nss-peer-stats.py b/package/kernel/mac80211/tests/test-nss-peer-stats.py
+new file mode 100644
+index 0000000..57dcdfa
+--- /dev/null
++++ b/package/kernel/mac80211/tests/test-nss-peer-stats.py
+@@ -0,0 +1,146 @@
++#!/usr/bin/env python3
++"""Compile the actual patched NSS peer statistics function with kernel I/O fixtures.
++
++No firmware ABI, module build or target hardware validation is implied.
++"""
++import argparse
++import hashlib
++import pathlib
++import re
++import resource
++import shlex
++import subprocess
++import tempfile
++
++TARGET = 'drivers/net/wireless/ath/ath11k/nss.c'
++FIX = '999-921-ath11k-nss-reset-per-peer-drop-total.patch'
++DRIVER_BLOB = '6a7396bf3a49c1db7bd4412dd181a96f8474757e'
++DRIVER_PATCHES = {
++    '0007-nss-drv-Fix-nss_wifili_if-compilation-error-GCC-13.patch':
++        '4d052625fa8f938b5982411f809f9e39fca018e5f9def5e94da9f6a877257e38',
++    '0017-nss-drv-wifili-add-exported-symbols.patch':
++        '75831dc3631339b144eef16287921227cc98d0a78981957b450da022a614f987',
++    '0022-nss-drv-limit-fw-12.2.patch':
++        '993297cf9aac475b0de6e1bef13f94e7bab6bbcdb0e31914b144f5c470186d7f',
++}
++
++
++def driver_types(path, patches):
++    data = path.read_bytes()
++    blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
++    if blob != DRIVER_BLOB:
++        raise ValueError('Driver header differs from pinned d5ee67bd84d1 export')
++    target = 'exports/nss_wifili_if.h'
++    with tempfile.TemporaryDirectory(prefix='nss-export-test-') as folder:
++        stage = pathlib.Path(folder)
++        header = stage / target
++        header.parent.mkdir()
++        header.write_bytes(data)
++        seen = set()
++        for patch in sorted(patches.glob('*.patch')):
++            raw = patch.read_bytes()
++            sections = re.split(r'(?=^--- (?:[ab]/|/dev/null))', raw.decode(), flags=re.M)
++            relevant = [s for s in sections if re.search(
++                r'^\+\+\+ b/' + re.escape(target) + r'(?:\s|$)', s, re.M)]
++            if not relevant:
++                continue
++            if hashlib.sha256(raw).hexdigest() != DRIVER_PATCHES.get(patch.name):
++                raise ValueError('Driver header patch differs from pinned feed: ' + patch.name)
++            subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-d', str(stage)],
++                           input=''.join(relevant), text=True, check=True,
++                           capture_output=True, timeout=10)
++            seen.add(patch.name)
++        if seen != set(DRIVER_PATCHES):
++            raise ValueError('Incomplete driver export patch series')
++        text = header.read_text()
++        print('Patched export SHA256:', hashlib.sha256(text.encode()).hexdigest())
++    # Copy complete declarations verbatim, including their nested type fields;
++    # unrelated kernel APIs from the rest of the header are not compiled.
++    names = ('tx_dropped', 'tx_ctrl_stats', 'rx_err', 'rx_ctrl_stats',
++             'retry_ctrl_stats', 'peer_ctrl_stats', 'peer_stats')
++    parts = [re.match(r'/\*.*?\*/', text, re.S).group()]
++    for name in ('TQM_RR_MAX', 'MAX_RESERVED_TYPE'):
++        parts.append(re.search(r'^#define NSS_WIFILI_' + name + r'\s+\d+\s*$',
++                               text, re.M).group())
++    for name in names:
++        parts.append(re.search(r'^struct nss_wifili_' + name +
++                               r' \{.*?^\};', text, re.M | re.S).group())
++    return '\n\n'.join(parts) + '\n'
++
++
++def extract(text):
++    signature = 'static void ath11k_nss_get_peer_stats('
++    start = -1
++    while True:
++        start = text.index(signature, start + 1)
++        brace = text.index('{', start)
++        semicolon = text.find(';', start)
++        if semicolon == -1 or semicolon > brace:
++            break
++    level, end = 1, brace + 1
++    while level:
++        level += (text[end] == '{') - (text[end] == '}')
++        end += 1
++    return text[start:end]
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--without-fix', action='store_true', help='reproduce original failure')
++    parser.add_argument('--sanitize', action='store_true')
++    parser.add_argument('--cc', default='cc')
++    parser.add_argument('--runner', default='', help='optional cross-execution command')
++    parser.add_argument('--driver-header', type=pathlib.Path,
++                        help='pinned NSS d5ee67bd84d1 exports/nss_wifili_if.h')
++    parser.add_argument('--driver-patches', type=pathlib.Path,
++                        help='pinned nss-packages qca-nss-drv/patches directory')
++    args = parser.parse_args()
++    if bool(args.driver_header) != bool(args.driver_patches):
++        parser.error('--driver-header and --driver-patches must be supplied together')
++    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
++    root = pathlib.Path(__file__).resolve().parents[1]
++    fixture = (root / 'tests/nss-peer-stats.c').read_text()
++    with tempfile.TemporaryDirectory(prefix='ath11k-nss-test-') as folder:
++        stage = pathlib.Path(folder)
++        source = stage / TARGET
++        source.parent.mkdir(parents=True)
++        applied = 0
++        # nss.c is introduced by the NSS series. Reconstruct just its complete
++        # file by applying every relevant section in the actual recipe order.
++        for patch in sorted((root / 'patches/nss/ath11k').glob('*.patch')):
++            if args.without_fix and patch.name == FIX:
++                continue
++            sections = re.split(r'(?=^--- (?:[ab]/|/dev/null))', patch.read_text(), flags=re.M)
++            relevant = [s for s in sections if re.search(r'^\+\+\+ b/' + re.escape(TARGET) + r'(?:\s|$)', s, re.M)]
++            if relevant:
++                subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-d', str(stage)],
++                               input=''.join(relevant), text=True, check=True,
++                               capture_output=True, timeout=10)
++                applied += 1
++        function = extract(source.read_text())
++        print('Complete source function SHA256:', hashlib.sha256(function.encode()).hexdigest())
++        print('Applied actual patch sections:', applied)
++        test = stage / 'test.c'
++        test.write_text(fixture.replace('/* SOURCE_FUNCTION */', function))
++        if args.driver_header:
++            (stage / 'driver-types.h').write_text(driver_types(args.driver_header,
++                                                            args.driver_patches))
++            print('Actual driver declarations from blob:', DRIVER_BLOB)
++        for macro in (False, True):
++            output = stage / ('test-12.5' if macro else 'test-default')
++            cmd = shlex.split(args.cc) + ['-std=c11', '-O0' if args.sanitize else '-O2', '-Wall', '-Wextra', '-Werror']
++            if macro:
++                cmd.append('-DNSS_FIRMWARE_VERSION_12_5')
++            if args.driver_header:
++                # Kernel builds suppress sign-compare: the real npeers is u32,
++                # unlike the intentionally simplified default fixture's int.
++                cmd += ['-DREAL_NSS_STATS_TYPES', '-Wno-sign-compare']
++            if args.sanitize:
++                cmd += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
++            subprocess.run(cmd + [str(test), '-o', str(output)], check=True, timeout=30)
++            subprocess.run(shlex.split(args.runner) + [str(output)], check=True, timeout=10)
++    print('Kernel/lookup fixtures; no module or firmware validation')
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/package/kernel/mac80211/tests/test-offload-host-queue.py b/package/kernel/mac80211/tests/test-offload-host-queue.py
+new file mode 100644
+index 0000000..1c0f772
+--- /dev/null
++++ b/package/kernel/mac80211/tests/test-offload-host-queue.py
+@@ -0,0 +1,75 @@
++#!/usr/bin/env python3
++# SPDX-License-Identifier: GPL-2.0-only
++"""Compile the actual 802.3 xmit function against bounded kernel fixtures."""
++import argparse
++import hashlib
++import pathlib
++import re
++import resource
++import shlex
++import subprocess
++import tempfile
++
++FIX='999-921-mac80211-initialize-offload-host-queue.patch'
++GROUPS=['build','subsys','ath','ath5k','ath9k','ath10k','ath11k','ath12k',
++        'rt2x00','mt7601u','mwl','brcm','rtl','nss/subsys','nss/ath10k','nss/ath11k']
++
++
++def extract(text):
++    signature='static void ieee80211_8023_xmit('
++    start=-1
++    while True:
++        start=text.index(signature,start+1)
++        brace=text.index('{',start);semi=text.find(';',start)
++        if semi<0 or semi>brace:break
++    level,end=1,brace+1
++    while level:
++        level+=(text[end]=='{')-(text[end]=='}');end+=1
++    return text[start:end]
++
++
++def main():
++    parser=argparse.ArgumentParser(description=__doc__)
++    source=parser.add_mutually_exclusive_group(required=True)
++    source.add_argument('--archive',type=pathlib.Path,help='recipe-matching backports tar.zst')
++    source.add_argument('--source',type=pathlib.Path,help='complete prepared tree including this fix')
++    parser.add_argument('--without-fix',action='store_true',help='reproduce the original queue diagnostic')
++    parser.add_argument('--sanitize',action='store_true')
++    parser.add_argument('--cc',default='cc')
++    parser.add_argument('--runner',default='')
++    args=parser.parse_args();resource.setrlimit(resource.RLIMIT_CORE,(0,0))
++    root=pathlib.Path(__file__).resolve().parents[1]
++    with tempfile.TemporaryDirectory(prefix='mac80211-queue-test-') as folder:
++        temp=pathlib.Path(folder);stage=temp/'source';stage.mkdir()
++        if args.archive:
++            expected=re.search(r'^PKG_HASH:=(\w+)$',(root/'Makefile').read_text(),re.M).group(1)
++            assert hashlib.sha256(args.archive.read_bytes()).hexdigest()==expected,'archive checksum mismatch'
++            subprocess.run(['tar','--zstd','--extract','--file',str(args.archive.resolve()),
++                            '--directory',str(stage),'--strip-components=1','--no-same-owner','--no-same-permissions'],check=True,timeout=30)
++            count=0
++            for group in GROUPS:
++                for patch in sorted((root/'patches'/group).glob('*.patch')):
++                    if args.without_fix and patch.name==FIX:continue
++                    subprocess.run(['patch','--batch','--fuzz=0','--no-backup-if-mismatch','-p1',
++                                    '-d',str(stage),'-i',str(patch.resolve())],check=True,capture_output=True,timeout=10)
++                    count+=1
++            print('Applied actual complete recipe patches:',count)
++        else:
++            source=stage/'net/mac80211/tx.c';source.parent.mkdir(parents=True)
++            source.write_bytes((args.source/'net/mac80211/tx.c').read_bytes())
++            if args.without_fix:
++                subprocess.run(['patch','--batch','--fuzz=0','-R','-p1','-d',str(stage),'-i',
++                                str(root/'patches/nss/subsys'/FIX)],check=True,capture_output=True,timeout=10)
++        function=extract((stage/'net/mac80211/tx.c').read_text())
++        print('Actual complete function SHA256:',hashlib.sha256(function.encode()).hexdigest())
++        test=temp/'test.c'
++        test.write_text((root/'tests/offload-host-queue.c').read_text().replace('/* SOURCE_FUNCTION */',function))
++        output=temp/'test'
++        cmd=shlex.split(args.cc)+['-std=c11','-O2','-Wall','-Wextra','-Werror']
++        if args.sanitize:cmd+=['-fsanitize=address,undefined','-fno-omit-frame-pointer']
++        subprocess.run(cmd+[str(test),'-o',str(output)],check=True,timeout=30)
++        subprocess.run(shlex.split(args.runner)+[str(output)],check=True,timeout=10)
++        print('Kernel/classifier fixtures only; firmware TID/AC and module build untested')
++
++
++if __name__=='__main__':main()
