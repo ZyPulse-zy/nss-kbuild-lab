@@ -23,6 +23,10 @@ jobs:
   kbuild:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [ipq60xx, ipq807x]
     steps:
       - uses: actions/checkout@v4
       - name: Install native build tools
@@ -30,13 +34,13 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y build-essential bison flex m4 gawk libncurses-dev zlib1g-dev libssl-dev file unzip zstd rsync gettext python3 perl git curl patch kmod
       - name: Build pinned kernel, dependencies, base and candidate modules
-        run: python3 -u scripts/lab.py --workspace "$RUNNER_TEMP/nss-kbuild-lab" --jobs 4
+        run: python3 -u scripts/lab.py --workspace "$RUNNER_TEMP/nss-kbuild-lab" --profile "${{ matrix.profile }}" --jobs 4
       - name: Recheck and collect evidence
         if: always()
         run: python3 scripts/collect_evidence.py --workspace "$RUNNER_TEMP/nss-kbuild-lab" --output "$RUNNER_TEMP/nss-kbuild-evidence"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ipq60xx-kbuild-evidence
+          name: ${{ matrix.profile }}-kbuild-evidence
           path: ${{ runner.temp }}/nss-kbuild-evidence
           if-no-files-found: error
