@@ -9,16 +9,16 @@ Small callback tests can miss real header, compiler-definition and symbol-table
 problems. This lab supplies the complete build context without needing a
 pre-existing firmware checkout, private device configuration, or NSS hardware.
 
-## Current profile
+## Validated profiles
 
-The first supported profile is **IPQ60xx / NSS 12.5**, using the public
-JDCloud RE-CS-02 compile configuration. Pins in [ipq60xx.json](pins/ipq60xx.json)
-identify every source archive, original Git commit, SDK and package patch:
+| CLI profile | Public compile configuration | NSS firmware interface |
+| --- | --- | --- |
+| `ipq60xx` (default) | JDCloud RE-CS-02 / IPQ6010 | 12.5 |
+| `ipq807x` | Dynalink DL-WRX36 / IPQ8072 | 12.5 |
 
-An **IPQ807x / NSS 12.5** candidate profile selects Dynalink DL-WRX36
-(IPQ8072), with its separately pinned official SDK and builder-host link list.
-Run it with `--profile ipq807x`. This branch requires a successful complete
-kernel/dependency/wireless CI build before that profile is considered supported.
+Pins in [ipq60xx.json](pins/ipq60xx.json) and
+[ipq807x.json](pins/ipq807x.json) identify every source archive, original Git
+commit, package patch and each target's separately verified official SDK.
 The lab rejects a resolved Kconfig that silently falls back to another device
 or subtarget, and records the selected options in the kernel proof.
 
@@ -53,10 +53,12 @@ No root permissions are needed after installing the native build dependencies:
 sudo apt-get install build-essential bison flex m4 gawk libncurses-dev \
   zlib1g-dev libssl-dev file unzip zstd rsync gettext python3 perl git curl patch kmod
 make test
-python3 -u scripts/lab.py --workspace "$PWD/build-ipq60xx" --jobs 4
+python3 -u scripts/lab.py --workspace "$PWD/build-ipq60xx" --profile ipq60xx --jobs 4
 python3 scripts/collect_evidence.py --workspace "$PWD/build-ipq60xx" \
   --output "$PWD/evidence-ipq60xx"
 ```
+
+For IPQ807x use `--profile ipq807x` and a separate new workspace.
 
 The build downloads roughly 411 MiB of public archives and verifies every
 SHA256 before extraction. An optional `--archive-cache DIR` reads files named
@@ -100,8 +102,10 @@ require a fresh workspace. A cache can avoid repeating downloads.
 - Retain command arguments, return codes, elapsed times, log hashes and failure
   attempts. Evidence collection rehashes the successful modules and command logs.
 
-CI runs the full public-input build on Ubuntu 24.04, plus unit tests on Python
-3.12 and 3.14. Only bounded JSON reports, logs and probe source are uploaded;
+CI runs both complete public-input builds independently on Ubuntu 24.04, plus
+26 unit tests on each of Python 3.12 and 3.14. The
+[verified dual-profile run](https://github.com/ZyPulse-zy/nss-kbuild-lab/actions/runs/39096156725)
+builds source revision `deb0df776943647e748980414210e903012b467f`. Only bounded JSON reports, logs and probe source are uploaded;
 firmware images and kernel modules are not distributed as deployment artifacts.
 
 ## Evidence boundary
@@ -113,7 +117,7 @@ modify host network configuration or contact a production router. It compiles
 third-party source, so run untrusted candidate revisions in an isolated CI runner.
 
 Additional firmware versions, mesh modes and SoCs require their own validated
-profile and actual builds. The current single profile is stated explicitly.
+profile and actual builds. The current two profiles disable NSS mesh offload.
 
 ## License and contributions
 
