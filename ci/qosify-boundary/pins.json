@@ -1,0 +1,53 @@
+{
+  "base_commit": "143d71d2479176ad5fdb0f9ce191affa2dc9640d",
+  "candidate": "73d3bfe0c62186f80956b8982bbefcb4ce3ed4b4",
+  "qosify": {
+    "url": "https://codeload.github.com/openwrt/qosify/tar.gz/143d71d2479176ad5fdb0f9ce191affa2dc9640d",
+    "sha256": "291fc651b95a486010ab2a09f27704f0b9fa7220e771b2a23b586910ba3ea528"
+  },
+  "sdk": {
+    "url": "https://downloads.openwrt.org/releases/25.12.0/targets/qualcommax/ipq60xx/openwrt-sdk-25.12.0-qualcommax-ipq60xx_gcc-14.3.0_musl.Linux-x86_64.tar.zst",
+    "sha256": "068b9f70a19fa95383be5778cdea5aeeef4ede61022de9e596f14bd4f30a4225",
+    "toolchain": "toolchain-aarch64_cortex-a53_gcc-14.3.0_musl",
+    "cross": "aarch64-openwrt-linux-musl-",
+    "absolute_host_links": {
+      "staging_dir/host/bin/python": "/opt/venv/bin/python3.9",
+      "staging_dir/host/bin/grep": "/bin/grep",
+      "staging_dir/host/bin/unzip": "/usr/bin/unzip",
+      "staging_dir/host/bin/awk": "/usr/bin/gawk",
+      "staging_dir/host/bin/perl": "/usr/bin/perl",
+      "staging_dir/host/bin/gzip": "/bin/gzip",
+      "staging_dir/host/bin/python3": "/opt/venv/bin/python3.9",
+      "staging_dir/host/bin/diff": "/usr/bin/diff",
+      "staging_dir/host/bin/git": "/usr/bin/git",
+      "staging_dir/host/bin/file": "/usr/bin/file",
+      "staging_dir/host/bin/rsync": "/usr/bin/rsync",
+      "staging_dir/host/bin/gcc": "/builder/openwrt-25_12_qualcommax_ipq60xx/ccache_cc.sh",
+      "staging_dir/host/bin/ldconfig": "/builder/shared-workdir/build/scripts/noop.sh",
+      "staging_dir/host/bin/bash": "/bin/bash",
+      "staging_dir/host/bin/getopt": "/usr/bin/getopt",
+      "staging_dir/host/bin/g++": "/builder/openwrt-25_12_qualcommax_ipq60xx/ccache_cxx.sh",
+      "staging_dir/host/bin/egrep": "/bin/egrep",
+      "staging_dir/host/bin/xxd": "/builder/shared-workdir/build/scripts/xxdi.pl",
+      "staging_dir/host/bin/wget": "/usr/bin/wget",
+      "staging_dir/host/bin/which": "/usr/bin/which"
+    }
+  },
+  "kernel": {
+    "version": "6.12.92",
+    "url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.92.tar.xz",
+    "sha256": "0fe376b7db3cac4456b38291bee4faa7091cb8befaa6f9870314f5d1282f9e3e"
+  },
+  "headers": [
+    {
+      "name": "stdarg.h",
+      "url": "https://raw.githubusercontent.com/qosmio/openwrt-ipq/92a2d104145c8d265851c4b388a41bd8e9c21cd9/package/kernel/bpf-headers/files/stdarg.h",
+      "sha256": "1559b692fcd94a3935ca178f63778a3121cadde0089736e53cc490b972a782cb"
+    },
+    {
+      "name": "bounds.h",
+      "url": "https://raw.githubusercontent.com/qosmio/openwrt-ipq/92a2d104145c8d265851c4b388a41bd8e9c21cd9/package/kernel/bpf-headers/src/include/generated/bounds.h",
+      "sha256": "b51d6ed72ab1ffea87f994726a2a8b7a182d42246790723d28ea277ca56210b0"
+    }
+  ]
+}

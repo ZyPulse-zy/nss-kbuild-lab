@@ -180,7 +180,9 @@ def extract_archive(archive, output, sdk_host_links=None):
     try:
         if str(archive).endswith(".zst"):
             process = subprocess.Popen(
-                ["zstd", "-qdc", str(archive)], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                ["zstd", "-qdc", str(Path(archive).resolve(strict=True))],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
             stream = tarfile.open(fileobj=process.stdout, mode="r|")
         else:
@@ -227,6 +229,9 @@ def extract_archive(archive, output, sdk_host_links=None):
                 raise RuntimeError("zstd decompression failed: " + error)
         return omitted_links
     finally:
-        if process and process.poll() is None:
-            process.kill()
-            process.wait(timeout=5)
+        if process:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+            process.stdout.close()
+            process.stderr.close()

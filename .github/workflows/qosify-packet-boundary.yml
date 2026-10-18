@@ -1,0 +1,41 @@
+name: Validate qosify packet boundary on real kernel BPF and TC
+on:
+  push:
+    branches: [research/qosify-packet-boundary]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  import-helper:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preserve exact signed-off extraction fix
+        run: |
+          git fetch origin 45e164ff16bd76ec2cbc314e84271cc06ce4a7ba
+          base64 -d ci/qosify-boundary/lab-helper.bundle.b64 > "$RUNNER_TEMP/helper.bundle"
+          echo '556e5a58c7b791fc53eaad1818be8cc5d64d607e3a17acc8349f7527116757a6  '"$RUNNER_TEMP/helper.bundle" | sha256sum -c -
+          git bundle verify "$RUNNER_TEMP/helper.bundle"
+          git fetch "$RUNNER_TEMP/helper.bundle" HEAD
+          test "$(git rev-parse FETCH_HEAD)" = 541dcf4b18c97bf50f8f3b25981af58162f3ee5f
+          git diff --exit-code FETCH_HEAD HEAD -- scripts/lab_io.py tests/test_lab_io.py
+          git push origin FETCH_HEAD:refs/heads/fix/sdk-cache-input-symlinks
+  kernel:
+    needs: import-helper
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y build-essential pkg-config flex bison m4 bc libelf-dev zlib1g-dev libcap-dev libssl-dev curl zstd iproute2 python3
+      - run: python3 -m unittest discover -s tests -v
+      - name: Build exact public inputs and complete classifier objects
+        run: python3 ci/qosify-boundary/prepare.py --workspace "$RUNNER_TEMP/qosify-boundary"
+      - name: Verify original failure and fixed real packet matrices
+        run: bash ci/qosify-boundary/run.sh "$RUNNER_TEMP/qosify-boundary"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qosify-packet-boundary-kernel-evidence
+          path: ${{ runner.temp }}/qosify-boundary/evidence

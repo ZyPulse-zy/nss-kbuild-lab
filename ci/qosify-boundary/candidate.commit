@@ -1,0 +1,22 @@
+tree b00e719d1a486e212a494c5d9c8c36540ce82cd8
+parent 143d71d2479176ad5fdb0f9ce191affa2dc9640d
+author Yuen Su <zypulsecore@gmail.com> 1792303850 +0800
+committer Yuen Su <zypulsecore@gmail.com> 1792303850 +0800
+
+bpf: accept headers ending at the packet boundary
+
+skb_ptr() rejects a header when its last byte is the last byte of the
+packet. A complete UDP or ICMP header with no payload is therefore
+unavailable to parse_l4proto(), so its configured DSCP rule is skipped.
+One extra payload byte makes the same rule work.
+
+Reject only a pointer past data_end. The full header still has to fit;
+truncated headers remain unavailable to the parser.
+
+The complete classifier reproduces this with real kernel BPF test runs
+and actual TC ingress/egress on a private TUN interface. The fixed program
+passes 976 Ethernet packet cases and 96 L3 datagrams across IPv4/IPv6,
+VLAN, ECN, DSCP fallback and truncated-header controls.
+
+Fixes: ca4509cf84d2 ("bpf: switch to using bpf_skb_utils.h")
+Signed-off-by: Yuen Su <zypulsecore@gmail.com>

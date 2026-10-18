@@ -1,0 +1,16 @@
+tree d3eac16144bb3dafbeb88e3d39b82c2bca123b1c
+parent d2892f00f5938c7802ac64a47afff7db5d20d93b
+author John Crispin <john@phrozen.org> 1792080000 +0200
+committer John Crispin <john@phrozen.org> 1792086215 +0200
+
+interface: accept only plain words in the tc arguments
+
+cmd_add_qdisc() appends bandwidth_up, bandwidth_down, mode and the
+options to a tc command line that qosify_run_cmd() runs through sh -c.
+check_str() refused only a single quote, so a value with a shell
+separator ran a command as root. It now refuses every byte outside
+letters, digits, '.', '_', '-' and the space that separates option
+words. A refused mode keeps the default diffserv4, so the command
+never carries "(null)".
+
+Signed-off-by: John Crispin <john@phrozen.org>

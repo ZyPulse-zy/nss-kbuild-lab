@@ -1,0 +1,40 @@
+From 73d3bfe0c62186f80956b8982bbefcb4ce3ed4b4 Mon Sep 17 00:00:00 2001
+From: Yuen Su <zypulsecore@gmail.com>
+Date: Sun, 18 Oct 2026 14:10:50 +0800
+Subject: [PATCH] bpf: accept headers ending at the packet boundary
+
+skb_ptr() rejects a header when its last byte is the last byte of the
+packet. A complete UDP or ICMP header with no payload is therefore
+unavailable to parse_l4proto(), so its configured DSCP rule is skipped.
+One extra payload byte makes the same rule work.
+
+Reject only a pointer past data_end. The full header still has to fit;
+truncated headers remain unavailable to the parser.
+
+The complete classifier reproduces this with real kernel BPF test runs
+and actual TC ingress/egress on a private TUN interface. The fixed program
+passes 976 Ethernet packet cases and 96 L3 datagrams across IPv4/IPv6,
+VLAN, ECN, DSCP fallback and truncated-header controls.
+
+Fixes: ca4509cf84d2 ("bpf: switch to using bpf_skb_utils.h")
+Signed-off-by: Yuen Su <zypulsecore@gmail.com>
+---
+ bpf_skb_utils.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/bpf_skb_utils.h b/bpf_skb_utils.h
+index d7378f3..474c992 100644
+--- a/bpf_skb_utils.h
++++ b/bpf_skb_utils.h
+@@ -33,7 +33,7 @@ skb_ptr(struct __sk_buff *skb, __u32 offset, __u32 len)
+ 	void *ptr = __skb_data(skb) + offset;
+ 	void *end = (void *)(long)(skb->data_end);
+ 
+-	if (ptr + len >= end)
++	if (ptr + len > end)
+ 		return NULL;
+ 
+ 	return ptr;
+-- 
+2.53.0
+
