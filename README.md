@@ -72,6 +72,8 @@ validated NSS 11.4 mesh build. Each profile needs a separate new workspace.
 The build downloads roughly 411 MiB of public archives and verifies every
 SHA256 before extraction. An optional `--archive-cache DIR` reads files named
 by their SHA256; it never writes to that cache and rejects corrupted entries.
+Read-only cache entries may be input symlinks; the extractor resolves them
+before invoking zstd, without changing cache bytes, permissions or links.
 Each build workspace is private to one invocation. Existing directories are
 rejected rather than reset.
 
@@ -115,9 +117,11 @@ require a fresh workspace. A cache can avoid repeating downloads.
   attempts. Evidence collection rehashes the successful modules and command logs.
 
 CI runs three complete public-input builds independently on Ubuntu 24.04, plus
-29 unit tests on each of Python 3.12 and 3.14. The
-[verified three-profile run](https://github.com/ZyPulse-zy/nss-kbuild-lab/actions/runs/39097831169)
-builds source revision `f638821fc3036396934f90178b40742e131dca32`.
+30 unit tests on each of Python 3.12 and 3.14. The
+[verified three-profile run](https://github.com/ZyPulse-zy/nss-kbuild-lab/actions/runs/39104699710)
+builds research revision `3b7858da1529561d91a4fde2ca4d91ecf717ddf6`; all 27
+release source files are identical to `541dcf4b18c97bf50f8f3b25981af58162f3ee5f`.
+Only independent qosify research CI files are additional in that run.
 Each profile passes 14 actual configure/compile/header stages plus four
 make-exported dependency identity checks, and rehashes all 20 real modules on
 the runner. Downloaded evidence contains 619 checksum-verified files per normal
