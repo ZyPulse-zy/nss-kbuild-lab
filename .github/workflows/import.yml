@@ -1,0 +1,19 @@
+name: Import independently pinned IPQ807x candidate
+on: [push, workflow_dispatch]
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify source bundle and create candidate branch
+        run: |
+          git fetch origin main
+          test "$(git rev-parse FETCH_HEAD)" = 489c8a5923e36b2dc472e18eaa9ac3eceff900ee
+          base64 -d source.bundle.b64 > "$RUNNER_TEMP/source.bundle"
+          echo '3bc61c23c813a55cd42ea8036f3e138f38d4ad57e75b2615ab3e10fde3c2da32  '"$RUNNER_TEMP/source.bundle" | sha256sum -c -
+          git bundle verify "$RUNNER_TEMP/source.bundle"
+          git fetch "$RUNNER_TEMP/source.bundle" HEAD
+          test "$(git rev-parse FETCH_HEAD)" = 13df3bd276ad4a9779e3f6f718cc692114efc485
+          git push origin FETCH_HEAD:refs/heads/feat/ipq807x-profile
