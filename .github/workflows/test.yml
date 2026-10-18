@@ -1,0 +1,42 @@
+name: Complete NSS Kbuild regressions
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+concurrency:
+  group: nss-lab-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python: ['3.12', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install black==26.3.1
+      - run: make PYTHON=python test format-check
+      - run: git diff-tree --check --root -r HEAD
+
+  kbuild:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y build-essential bison flex m4 gawk libncurses-dev zlib1g-dev libssl-dev file unzip zstd rsync gettext python3 perl git curl patch kmod
+      - name: Build pinned kernel, dependencies, base and candidate modules
+        run: python3 -u scripts/lab.py --workspace "$RUNNER_TEMP/nss-kbuild-lab" --jobs 4
+      - name: Recheck and collect evidence
+        if: always()
+        run: python3 scripts/collect_evidence.py --workspace "$RUNNER_TEMP/nss-kbuild-lab" --output "$RUNNER_TEMP/nss-kbuild-evidence"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ipq60xx-kbuild-evidence
+          path: ${{ runner.temp }}/nss-kbuild-evidence
+          if-no-files-found: error
