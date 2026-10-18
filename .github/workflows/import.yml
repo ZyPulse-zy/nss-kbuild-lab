@@ -1,0 +1,19 @@
+name: Import verified evidence fix
+on: [push, workflow_dispatch]
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify source and fast-forward the new repository
+        run: |
+          git fetch origin main
+          test "$(git rev-parse FETCH_HEAD)" = c12fd775d950ae2a976b5c77731578714ff2bf14
+          base64 -d source.bundle.b64 > "$RUNNER_TEMP/source.bundle"
+          echo 'f42eae9b6a8e7b46ca377586019cbd33da293e80ac8e3577945f6d6d4187535b  '"$RUNNER_TEMP/source.bundle" | sha256sum -c -
+          git bundle verify "$RUNNER_TEMP/source.bundle"
+          git fetch "$RUNNER_TEMP/source.bundle" refs/heads/main
+          test "$(git rev-parse FETCH_HEAD)" = 1f2497f1491bb644942c74c2152b38c119ee582c
+          git push origin FETCH_HEAD:refs/heads/main
