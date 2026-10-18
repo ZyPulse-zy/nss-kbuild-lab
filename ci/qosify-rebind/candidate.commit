@@ -1,0 +1,28 @@
+tree c45c21faea4d74ba230ca3682ed970ed28d90686
+parent 143d71d2479176ad5fdb0f9ce191affa2dc9640d
+author Yuen Su <zypulsecore@gmail.com> 1792307263 +0800
+committer Yuen Su <zypulsecore@gmail.com> 1792307263 +0800
+
+interface: restart shaping when a logical interface changes device
+
+When netifd reports a new l3_device for an active logical interface,
+qosify overwrites ifname before calling interface_start(). The latter
+returns immediately for an active interface, leaving the old device's
+CAKE qdisc and BPF filters installed while the new device is unshaped.
+A later down notification then cleans the wrong device.
+
+Stop the active interface before replacing its device name. This removes
+the old configuration and lets the existing start path select the right
+Ethernet or IP-only classifier for the new device. An unchanged binding
+keeps its current qdisc and filters.
+
+Reproduced with complete production interface.c and main.c against real
+TC/BPF/CAKE in private network/mount namespaces. Four Ethernet/TUN pairs
+exercise eight lifecycle phases each, 64 device checks and 512 IPv4/IPv6
+UDP frames with all ECN values. The original fails 32 device checks; the
+fix passes all, including old-device cleanup and foreign-filter retention.
+Only netifd resolution and pinned program lookup are fixtures; ingress
+shaping/IFB, the full daemon and hardware are outside this test.
+
+Fixes: 52a57bf0e4eb ("Initial import")
+Signed-off-by: Yuen Su <zypulsecore@gmail.com>

@@ -1,0 +1,7 @@
+diff --git a/interface.c b/interface.c
+index 9a6a968..9fcdeda 100644
+--- a/interface.c
++++ b/interface.c
+@@ -632,0 +633,2 @@ qosify_iface_check_interface(struct qosify_iface *iface)
++		if (strcmp(iface->ifname, ifname))
++			interface_stop(iface);

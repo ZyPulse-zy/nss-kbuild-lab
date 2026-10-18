@@ -1,0 +1,53 @@
+name: Validate qosify interface rebinding against real TC and CAKE
+on:
+  push:
+    branches: [research/qosify-interface-rebind]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  import-docs:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preserve signed-off verified component documentation
+        run: |
+          git fetch origin 541dcf4b18c97bf50f8f3b25981af58162f3ee5f
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import base64,hashlib,json,os
+          root=Path('ci/qosify-rebind')
+          data=base64.b64decode((root/'nss-docs.bundle.b64').read_text(),validate=False)
+          meta=json.loads((root/'nss-docs.json').read_text())
+          assert hashlib.sha256(data).hexdigest()==meta['sha256']
+          Path(os.environ['RUNNER_TEMP'],'nss-docs.bundle').write_bytes(data)
+          PYCODE
+          git bundle verify "$RUNNER_TEMP/nss-docs.bundle"
+          git fetch "$RUNNER_TEMP/nss-docs.bundle" HEAD
+          test "$(git rev-parse FETCH_HEAD)" = debd32545d9060f488fa8c9ac3cd73f0298bbc5b
+          test "$(git diff --name-only 541dcf4b18c97bf50f8f3b25981af58162f3ee5f FETCH_HEAD)" = README.md
+          git diff --check 541dcf4b18c97bf50f8f3b25981af58162f3ee5f FETCH_HEAD
+          git push origin FETCH_HEAD:refs/heads/docs/cache-symlink-evidence
+  kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y build-essential pkg-config flex bison m4 bc libelf-dev zlib1g-dev libcap-dev libssl-dev libnl-3-dev curl zstd iproute2 python3
+      - run: python3 -m unittest discover -s tests -v
+      - run: git diff-tree --check --root -r HEAD
+      - name: Build pinned complete original production BPF object and native bpftool
+        run: python3 ci/qosify-boundary/prepare.py --workspace "$RUNNER_TEMP/qosify-rebind"
+      - name: Restore and compile full interface and command-runner translation units
+        run: python3 ci/qosify-rebind/build.py --workspace "$RUNNER_TEMP/qosify-rebind"
+      - name: Check original failure and fixed native and sanitizer lifecycle matrices
+        run: bash ci/qosify-rebind/run.sh "$RUNNER_TEMP/qosify-rebind"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qosify-interface-rebind-kernel-evidence
+          path: |
+            ${{ runner.temp }}/qosify-rebind/evidence-rebind
+            ${{ runner.temp }}/qosify-rebind/evidence
