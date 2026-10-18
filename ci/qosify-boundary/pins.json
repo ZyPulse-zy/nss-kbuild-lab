@@ -49,5 +49,6 @@
       "url": "https://raw.githubusercontent.com/qosmio/openwrt-ipq/92a2d104145c8d265851c4b388a41bd8e9c21cd9/package/kernel/bpf-headers/src/include/generated/bounds.h",
       "sha256": "b51d6ed72ab1ffea87f994726a2a8b7a182d42246790723d28ea277ca56210b0"
     }
-  ]
+  ],
+  "patch_sha256": "315de2f9382e179dafd4db943844a6d577a338a2206bc9bc974eeb58cbe4d573"
 }

@@ -97,9 +97,13 @@ def main():
         pins["base_commit"],
         branch="master",
     )
+    patch = (HERE / "fix.patch").read_bytes()
+    assert hashlib.sha256(patch).hexdigest() == pins["patch_sha256"]
+    patch_file = workspace / "fix.patch"
+    patch_file.write_bytes(patch)
     run(
         evidence / "apply-fix.log",
-        ["patch", "--batch", "--fuzz=0", "-p1", "-i", HERE / "fix.patch"],
+        ["patch", "--batch", "--fuzz=0", "-p1", "-i", patch_file],
         cwd=fixed,
     )
     fixed_proof = restore_git(
@@ -255,6 +259,8 @@ def main():
             f"OUTPUT={bpftool}/",
             "CC=gcc",
             "HOSTCC=gcc",
+            f"CLANG={llvm}/clang",
+            f"LLVM_STRIP={llvm}/llvm-strip",
             "-j4",
         ],
     )
