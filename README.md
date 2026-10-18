@@ -15,6 +15,7 @@ pre-existing firmware checkout, private device configuration, or NSS hardware.
 | --- | --- | --- |
 | `ipq60xx` (default) | JDCloud RE-CS-02 / IPQ6010 | 12.5 |
 | `ipq807x` | Dynalink DL-WRX36 / IPQ8072 | 12.5 |
+| `ipq807x-mesh` | Dynalink DL-WRX36 / IPQ8072 | 11.4 with mesh |
 
 Pins in [ipq60xx.json](pins/ipq60xx.json) and
 [ipq807x.json](pins/ipq807x.json) identify every source archive, original Git
@@ -22,12 +23,12 @@ commit, package patch and each target's separately verified official SDK.
 The lab rejects a resolved Kconfig that silently falls back to another device
 or subtarget, and records the selected options in the kernel proof.
 
-This development branch also prepares `ipq807x-mesh`, requiring NSS 11.4 and
-its different driver/client revisions and patch series. It is a candidate until
-a complete build passes. Each dependency's actual make-exported source revision
-and patch directory must match its manifest before it is compiled. The 11.4
-header predates the separate retry structure, so its layout probe compares the
-common peer row across driver, baseline and candidate instead.
+The [mesh profile](pins/ipq807x-mesh.json) follows the actual Kconfig requirement
+for NSS 11.4. It pins driver `53e586323efa906f5769e16e118b7c02226d9de3`
+and clients `c4049d17ddda323d4514f053bc2d72e2443f9d23`, with their 41 and 40
+legacy recipe patches. Each dependency's actual make-exported source revision
+and patch directory must match its manifest before it is compiled. The
+following table describes the normal NSS 12.5 inputs.
 
 | Input | Pin |
 | --- | --- |
@@ -65,7 +66,8 @@ python3 scripts/collect_evidence.py --workspace "$PWD/build-ipq60xx" \
   --output "$PWD/evidence-ipq60xx"
 ```
 
-For IPQ807x use `--profile ipq807x` and a separate new workspace.
+For IPQ807x use `--profile ipq807x`, or `--profile ipq807x-mesh` for the
+validated NSS 11.4 mesh build. Each profile needs a separate new workspace.
 
 The build downloads roughly 411 MiB of public archives and verifies every
 SHA256 before extraction. An optional `--archive-cache DIR` reads files named
@@ -103,17 +105,25 @@ require a fresh workspace. A cache can avoid repeating downloads.
 - Require strict module symbol resolution, AArch64 ELF headers, matching kernel
   vermagic, and hashes of all 20 modules. Existing compiler warnings are retained.
 - Replay the actual Kbuild compiler arguments against complete headers. The
-  selected ABI probe reports driver/baseline/candidate peer-sync sizes
+  NSS 12.5 ABI probe reports driver/baseline/candidate peer-sync sizes
   **212 / 196 / 212 bytes**, and retry offsets **188 / 180 / 188**. This catches
   the baseline firmware macro mismatch without copied structure definitions.
+  The NSS 11.4 header predates that retry structure; its complete-header probe
+  reports the common peer row as **176 / 176 / 176 bytes**, preserving the
+  matching legacy layout. These remain source-interface checks.
 - Retain command arguments, return codes, elapsed times, log hashes and failure
   attempts. Evidence collection rehashes the successful modules and command logs.
 
-CI runs both complete public-input builds independently on Ubuntu 24.04, plus
-26 unit tests on each of Python 3.12 and 3.14. The
-[verified dual-profile run](https://github.com/ZyPulse-zy/nss-kbuild-lab/actions/runs/39096156725)
-builds source revision `deb0df776943647e748980414210e903012b467f`. Only bounded JSON reports, logs and probe source are uploaded;
-firmware images and kernel modules are not distributed as deployment artifacts.
+CI runs three complete public-input builds independently on Ubuntu 24.04, plus
+29 unit tests on each of Python 3.12 and 3.14. The
+[verified three-profile run](https://github.com/ZyPulse-zy/nss-kbuild-lab/actions/runs/39097831169)
+builds source revision `f638821fc3036396934f90178b40742e131dca32`.
+Each profile passes 14 actual configure/compile/header stages plus four
+make-exported dependency identity checks, and rehashes all 20 real modules on
+the runner. Downloaded evidence contains 619 checksum-verified files per normal
+profile and 641 for mesh, including the additional legacy patch logs. Only
+bounded JSON reports, logs and probe source are uploaded; firmware images and
+kernel modules are not distributed as deployment artifacts.
 
 ## Evidence boundary
 
@@ -124,7 +134,8 @@ modify host network configuration or contact a production router. It compiles
 third-party source, so run untrusted candidate revisions in an isolated CI runner.
 
 Additional firmware versions, mesh modes and SoCs require their own validated
-profile and actual builds. The current two profiles disable NSS mesh offload.
+profile and actual builds. Mesh support here is demonstrated only for the
+explicit NSS 11.4 IPQ807x profile; NSS 12.5 profiles keep mesh disabled.
 
 ## License and contributions
 
